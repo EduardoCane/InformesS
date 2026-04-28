@@ -293,6 +293,7 @@ const Dashboard = () => {
   const [reportSourceInspections, setReportSourceInspections] = useState<DashboardInspection[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportExporting, setReportExporting] = useState(false);
+  const [deletingInspectionId, setDeletingInspectionId] = useState<string | null>(null);
 
   const isMineView = ownerFilter === OWNER_FILTER_MINE;
   const showCreatorColumn = !isMineView;
@@ -360,14 +361,14 @@ const Dashboard = () => {
     }
   }, [loadDashboardUsers]);
 
-  const loadInspectionsForOwnerFilter = useCallback(async (targetOwnerFilter: string) => {
+  const loadInspectionsForOwnerFilter = useCallback(async (targetOwnerFilter: string, skipCache = false) => {
     if (!user) {
       return [];
     }
 
     const cacheKey = getDashboardCacheKey(user.id, targetOwnerFilter);
 
-    if (dashboardCache.has(cacheKey)) {
+    if (!skipCache && dashboardCache.has(cacheKey)) {
       return dashboardCache.get(cacheKey) ?? [];
     }
 
@@ -397,7 +398,7 @@ const Dashboard = () => {
     return nextInspections;
   }, [user]);
 
-  const fetchInspections = useCallback(async () => {
+  const fetchInspections = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     try {
       console.log("[Dashboard] Usuario actual:", user);
@@ -408,7 +409,7 @@ const Dashboard = () => {
         return;
       }
 
-      const nextInspections = await loadInspectionsForOwnerFilter(ownerFilter);
+      const nextInspections = await loadInspectionsForOwnerFilter(ownerFilter, forceRefresh);
       syncInspections(nextInspections);
     } catch (err) {
       console.log("[Dashboard] Error al consultar inspections:", err);
@@ -665,16 +666,20 @@ const Dashboard = () => {
     }
 
     toast.success("Inspeccion archivada");
-    syncInspections(inspections.filter((inspection) => inspection.id !== id));
+    // Limpiar caché y recargar
+    dashboardCache.clear();
+    void fetchInspections();
   };
 
   const handleDelete = async () => {
     if (!inspectionToDelete) return;
 
     const { id } = inspectionToDelete;
-    setInspectionToDelete(null);
+    setDeletingInspectionId(id);
 
     const { error } = await supabase.from("inspections").delete().eq("id", id);
+
+    setDeletingInspectionId(null);
 
     if (error) {
       toast.error("Error al eliminar");
@@ -682,7 +687,10 @@ const Dashboard = () => {
     }
 
     toast.success("Inspeccion eliminada");
-    syncInspections(inspections.filter((inspection) => inspection.id !== id));
+    setInspectionToDelete(null);
+    // Limpiar caché y recargar
+    dashboardCache.clear();
+    void fetchInspections();
   };
 
   const openReportDialog = () => {
@@ -875,7 +883,7 @@ const Dashboard = () => {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={fetchInspections}
+                onClick={() => fetchInspections(true)}
                 disabled={loading}
                 className="h-10 rounded-full border-border/70 bg-background/90 px-4 shadow-soft-sm hover:bg-background"
               >
@@ -1049,6 +1057,7 @@ const Dashboard = () => {
         confirmLabel="Eliminar"
         confirmTone="destructive"
         onConfirm={handleDelete}
+        loading={deletingInspectionId !== null}
       />
     </>
   );

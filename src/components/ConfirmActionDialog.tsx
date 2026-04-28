@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +20,7 @@ type ConfirmActionDialogProps = {
   cancelLabel?: string;
   confirmTone?: "default" | "destructive";
   onConfirm: () => void;
+  loading?: boolean;
 };
 
 export const ConfirmActionDialog = ({
@@ -30,6 +32,7 @@ export const ConfirmActionDialog = ({
   cancelLabel = "Cancelar",
   confirmTone = "default",
   onConfirm,
+  loading = false,
 }: ConfirmActionDialogProps) => (
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent className="max-w-md rounded-2xl border-border/70 bg-background/95 shadow-soft-md">
@@ -42,18 +45,26 @@ export const ConfirmActionDialog = ({
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel className="rounded-full">
+        <AlertDialogCancel className="rounded-full" disabled={loading}>
           {cancelLabel}
         </AlertDialogCancel>
         <AlertDialogAction
           onClick={onConfirm}
+          disabled={loading}
           className={cn(
             "rounded-full",
             confirmTone === "destructive" &&
-              "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive",
+              "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive disabled:opacity-50",
           )}
         >
-          {confirmLabel}
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {confirmLabel}
+            </>
+          ) : (
+            confirmLabel
+          )}
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
