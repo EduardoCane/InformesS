@@ -53,6 +53,7 @@ import {
   Loader2,
   MapPin,
   Pencil,
+  RefreshCw,
   Save,
   Trash2,
   X,
@@ -168,13 +169,16 @@ const NewInspection = () => {
   const { user } = useAuth();
   const {
     templates,
+    loading: templatesLoading,
     error: templatesError,
     createTemplate,
     updateTemplate,
     deleteTemplate,
+    reload: reloadTemplates,
   } = useContractTemplates();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshingContracts, setRefreshingContracts] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedFormatId, setSelectedFormatId] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
@@ -349,6 +353,19 @@ const NewInspection = () => {
     setIsCreateContractOpen(true);
   };
 
+  const handleRefreshContracts = async () => {
+    try {
+      setRefreshingContracts(true);
+      await reloadTemplates();
+      toast.success("Contratos actualizados");
+    } catch (error) {
+      console.error("Error refreshing contracts:", error);
+      toast.error(`No se pudieron actualizar los contratos: ${getErrorMessage(error)}`);
+    } finally {
+      setRefreshingContracts(false);
+    }
+  };
+
   const handleCreateContract = async () => {
     const normalizedName = newContractName.trim();
     setCreateContractError("");
@@ -409,6 +426,11 @@ const NewInspection = () => {
   };
 
   const handleEditContract = (template: ContractTemplate) => {
+    if (template.userId && template.userId !== user?.id) {
+      toast.error("Solo puedes editar contratos creados por tu usuario");
+      return;
+    }
+
     setSelectedTemplateId(template.id);
     setEditingTemplateId(template.id);
     setEditingContractName(template.name);
@@ -460,6 +482,11 @@ const NewInspection = () => {
   };
 
   const handleDeleteContract = async (template: ContractTemplate) => {
+    if (template.userId && template.userId !== user?.id) {
+      toast.error("Solo puedes eliminar contratos creados por tu usuario");
+      return;
+    }
+
     try {
       const usageCount = await checkTemplateUsageInInspections(template.id);
 
@@ -573,12 +600,16 @@ const NewInspection = () => {
                 <Step1
                   templates={templates}
                   templatesError={templatesError}
+                  templatesLoading={templatesLoading}
                   selectedTemplate={selectedTemplate}
+                  currentUserId={user?.id ?? null}
+                  refreshingContracts={refreshingContracts}
                   isEditMode={isEditMode}
                   onSelectTemplate={handleTemplateSelect}
                   onToggleEditMode={() => setIsEditMode((currentValue) => !currentValue)}
                   onEditTemplate={handleEditContract}
                   onDeleteTemplate={handleDeleteContract}
+                  onRefreshTemplates={handleRefreshContracts}
                   onOpenCreateContract={openCreateContractDialog}
                 />
               )}
@@ -791,40 +822,64 @@ const Stepper = ({ currentStep }: { currentStep: number }) => (
 const Step1 = ({
   templates,
   templatesError,
+  templatesLoading,
   selectedTemplate,
+  currentUserId,
+  refreshingContracts,
   isEditMode,
   onSelectTemplate,
   onToggleEditMode,
   onEditTemplate,
   onDeleteTemplate,
+  onRefreshTemplates,
   onOpenCreateContract,
 }: {
   templates: ContractTemplate[];
   templatesError: string | null;
+  templatesLoading: boolean;
   selectedTemplate: ContractTemplate | null;
+  currentUserId: string | null;
+  refreshingContracts: boolean;
   isEditMode: boolean;
   onSelectTemplate: (template: ContractTemplate) => void;
   onToggleEditMode: () => void;
   onEditTemplate: (template: ContractTemplate) => void;
   onDeleteTemplate: (template: ContractTemplate) => void;
+  onRefreshTemplates: () => void;
   onOpenCreateContract: () => void;
 }) => {
+  const canManageTemplate = (template: ContractTemplate) =>
+    Boolean(currentUserId && (!template.userId || template.userId === currentUserId));
+  const hasManageableTemplates = templates.some(canManageTemplate);
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
         <div className="max-w-2xl">
           <h2 className="text-lg font-semibold">Contrato y tipo</h2>
-          <p className="text-sm text-muted-foreground">
-            Elige o crea un contrato. Si hace falta, puedes editar su nombre y el tipo predeterminado sin salir de esta vista.
-          </p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRefreshTemplates}
+            disabled={templatesLoading || refreshingContracts}
+            className="w-full sm:w-auto"
+          >
+            {refreshingContracts || templatesLoading ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+            )}
+            Actualizar
+          </Button>
           <Button size="sm" onClick={onOpenCreateContract} className="w-full sm:w-auto">
             <Plus className="mr-1.5 h-4 w-4" />
             Crear contrato
           </Button>
-          {templates.length > 0 && (
+          {hasManageableTemplates && (
             <Button
               variant={isEditMode ? "default" : "outline"}
               size="sm"
@@ -845,6 +900,14 @@ const Step1 = ({
             No se pudieron cargar los contratos: {templatesError}
           </AlertDescription>
         </Alert>
+      ) : templatesLoading ? (
+        <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center">
+          <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-muted-foreground" />
+          <h3 className="text-base font-semibold">Cargando contratos</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Actualizando la lista de contratos disponibles.
+          </p>
+        </div>
       ) : templates.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center">
           <FolderKanban className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
@@ -898,7 +961,7 @@ const Step1 = ({
                     </div>
                   </button>
 
-                  {isEditMode && (
+                  {isEditMode && canManageTemplate(template) && (
                     <div className="mt-3 flex gap-2 border-t border-border/70 pt-3">
                       <Button
                         type="button"

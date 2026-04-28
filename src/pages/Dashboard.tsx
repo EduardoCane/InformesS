@@ -910,6 +910,7 @@ const Dashboard = () => {
                       key={inspection.id}
                       inspection={inspection}
                       showCreator={showCreatorColumn}
+                      canArchive={inspection.user_id === user?.id}
                       onView={() => navigate(`/inspections/${inspection.id}`)}
                       onArchive={() => handleArchive(inspection.id)}
                       onDelete={() => setInspectionToDelete(inspection)}
@@ -944,65 +945,71 @@ const Dashboard = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filteredInspections.map((inspection) => (
-                            <TableRow
-                              key={inspection.id}
-                              className="group border-border/60 bg-background transition-colors hover:bg-primary-muted/25"
-                            >
-                              <TableCell className="px-6 py-5">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-muted text-primary">
-                                    <CalendarRange className="h-4 w-4" />
+                          {filteredInspections.map((inspection) => {
+                            const canArchive = inspection.user_id === user?.id;
+
+                            return (
+                              <TableRow
+                                key={inspection.id}
+                                className="group border-border/60 bg-background transition-colors hover:bg-primary-muted/25"
+                              >
+                                <TableCell className="px-6 py-5">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-muted text-primary">
+                                      <CalendarRange className="h-4 w-4" />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <p className="text-sm font-semibold text-foreground">
+                                        {inspection.inspection_date
+                                          ? format(parseISO(inspection.inspection_date), "dd MMM yyyy", { locale: es })
+                                          : "-"}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">Fecha programada</p>
+                                    </div>
                                   </div>
-                                  <div className="space-y-0.5">
-                                    <p className="text-sm font-semibold text-foreground">
-                                      {inspection.inspection_date
-                                        ? format(parseISO(inspection.inspection_date), "dd MMM yyyy", { locale: es })
-                                        : "-"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">Fecha programada</p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              {showCreatorColumn ? (
-                                <TableCell className="px-6 py-5 text-sm text-muted-foreground">
-                                  {inspection.creator_name ?? "-"}
                                 </TableCell>
-                              ) : null}
-                              <TableCell className="px-6 py-5 text-sm font-semibold text-foreground">
-                                {inspection.contract_type || "-"}
-                              </TableCell>
-                              <TableCell className="px-6 py-5">
-                                <p className="max-w-[22rem] truncate text-sm text-muted-foreground">
-                                  {inspection.subject ?? "Sin asunto"}
-                                </p>
-                              </TableCell>
-                              <TableCell className="px-6 py-5">
-                                <StatusBadge status={inspection.status} />
-                              </TableCell>
-                              <TableCell className="px-6 py-5">
-                                <div className="flex items-center justify-end gap-2">
-                                  <TableActionButton
-                                    icon={Eye}
-                                    title="Ver"
-                                    onClick={() => navigate(`/inspections/${inspection.id}`)}
-                                  />
-                                  <TableActionButton
-                                    icon={Archive}
-                                    title="Archivar"
-                                    tone="warning"
-                                    onClick={() => handleArchive(inspection.id)}
-                                  />
-                                  <TableActionButton
-                                    icon={Trash2}
-                                    title="Eliminar"
-                                    tone="danger"
-                                    onClick={() => setInspectionToDelete(inspection)}
-                                  />
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                                {showCreatorColumn ? (
+                                  <TableCell className="px-6 py-5 text-sm text-muted-foreground">
+                                    {inspection.creator_name ?? "-"}
+                                  </TableCell>
+                                ) : null}
+                                <TableCell className="px-6 py-5 text-sm font-semibold text-foreground">
+                                  {inspection.contract_type || "-"}
+                                </TableCell>
+                                <TableCell className="px-6 py-5">
+                                  <p className="max-w-[22rem] truncate text-sm text-muted-foreground">
+                                    {inspection.subject ?? "Sin asunto"}
+                                  </p>
+                                </TableCell>
+                                <TableCell className="px-6 py-5">
+                                  <StatusBadge status={inspection.status} />
+                                </TableCell>
+                                <TableCell className="px-6 py-5">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <TableActionButton
+                                      icon={Eye}
+                                      title="Ver"
+                                      onClick={() => navigate(`/inspections/${inspection.id}`)}
+                                    />
+                                    {canArchive ? (
+                                      <TableActionButton
+                                        icon={Archive}
+                                        title="Archivar"
+                                        tone="warning"
+                                        onClick={() => handleArchive(inspection.id)}
+                                      />
+                                    ) : null}
+                                    <TableActionButton
+                                      icon={Trash2}
+                                      title="Eliminar"
+                                      tone="danger"
+                                      onClick={() => setInspectionToDelete(inspection)}
+                                    />
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -1502,12 +1509,14 @@ const EmptyState = ({ onCreate }: { onCreate: () => void }) => (
 const DashboardInspectionCard = ({
   inspection,
   showCreator,
+  canArchive,
   onView,
   onArchive,
   onDelete,
 }: {
   inspection: DashboardInspection;
   showCreator: boolean;
+  canArchive: boolean;
   onView: () => void;
   onArchive: () => void;
   onDelete: () => void;
@@ -1537,10 +1546,12 @@ const DashboardInspectionCard = ({
         <Eye className="mr-1.5 h-4 w-4" />
         Ver
       </Button>
-      <Button size="sm" variant="outline" onClick={onArchive} className="flex-1 min-w-[96px]">
-        <Archive className="mr-1.5 h-4 w-4" />
-        Archivar
-      </Button>
+      {canArchive ? (
+        <Button size="sm" variant="outline" onClick={onArchive} className="flex-1 min-w-[96px]">
+          <Archive className="mr-1.5 h-4 w-4" />
+          Archivar
+        </Button>
+      ) : null}
       <Button
         size="sm"
         variant="outline"

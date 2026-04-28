@@ -71,12 +71,11 @@ const withTimeout = async <T>(
   }
 };
 
-export const fetchContractTemplates = async (userId: string) => {
+export const fetchContractTemplates = async (_userId: string) => {
   const [{ data, error }, reportFormats] = await Promise.all([
     supabase
       .from("contract_templates")
       .select(CONTRACT_TEMPLATE_SELECT)
-      .eq("user_id", userId)
       .order("created_at", { ascending: false }),
     fetchGlobalReportFormats(),
   ]);
@@ -92,7 +91,6 @@ export const fetchContractTemplatesForEditor = async (userId: string) => {
     supabase
       .from("contract_templates")
       .select(CONTRACT_TEMPLATE_SELECT)
-      .eq("user_id", userId)
       .order("created_at", { ascending: false }),
     fetchGlobalReportFormats(),
   ]);
@@ -135,15 +133,11 @@ export const fetchContractTemplatesForEditor = async (userId: string) => {
   return attachFormatsToTemplates(templates, reportFormats);
 };
 
-export const fetchContractTemplateById = async (templateId: string, userId?: string) => {
-  let query = supabase
+export const fetchContractTemplateById = async (templateId: string, _userId?: string) => {
+  const query = supabase
     .from("contract_templates")
     .select(CONTRACT_TEMPLATE_SELECT)
     .eq("id", templateId);
-
-  if (userId) {
-    query = query.eq("user_id", userId);
-  }
 
   const [{ data, error }, reportFormats] = await Promise.all([
     query.single(),

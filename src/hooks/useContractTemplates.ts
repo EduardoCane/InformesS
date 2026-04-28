@@ -47,6 +47,7 @@ export const useContractTemplates = (useForEditor = false) => {
 
     return {
       id: dbTemplate.id,
+      userId: dbTemplate.user_id ?? null,
       name: dbTemplate.name,
       description: dbTemplate.description,
       iconName: dbTemplate.icon_name,
@@ -259,10 +260,21 @@ export const useContractTemplates = (useForEditor = false) => {
   );
 
   const reload = useCallback(async () => {
-    if (userId) {
+    if (!userId) return;
+
+    try {
+      setLoading(true);
+      setError(null);
       const data = await fetchContractTemplates(userId);
       const transformed = data.map(mapDbTemplate);
       setTemplatesState(transformed);
+    } catch (err) {
+      console.error("Error reloading templates:", err);
+      setError(err instanceof Error ? err.message : "Error al recargar plantillas");
+      setTemplatesState([]);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   }, [mapDbTemplate, userId]);
 

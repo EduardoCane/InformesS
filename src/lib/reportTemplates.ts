@@ -21,6 +21,7 @@ export interface ReportFormatDefinition {
 
 export interface ContractTemplate {
   id: string;
+  userId?: string | null;
   name: string;
   description: string;
   iconName: string;
