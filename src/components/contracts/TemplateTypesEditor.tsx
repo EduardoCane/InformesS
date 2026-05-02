@@ -10,6 +10,8 @@ import {
   ContractFieldDefinition,
   ContractTemplate,
   DEFAULT_REPEATABLE_GROUP_KEY,
+  DEFAULT_REPEATABLE_TABLE_GROUP_KEY,
+  cloneContractFormat,
   createContractField,
   createContractFormat,
   getRepeatableGroupLabel,
@@ -119,15 +121,25 @@ export const TemplateTypesEditor = ({
   const handleFieldPlacementChange = (
     formatId: string,
     fieldId: string,
-    placement: "single" | "block",
+    placement: "single" | "block" | "table",
   ) => {
     updateSelectedField(formatId, fieldId, (field) => ({
       ...field,
-      repeatableGroup:
-        placement === "block"
-          ? field.repeatableGroup ?? DEFAULT_REPEATABLE_GROUP_KEY
-          : null,
-      isResultField: placement === "block" ? false : field.isResultField,
+      repeatableGroup: (() => {
+        if (placement === "single") return null;
+        if (placement === "table") {
+          return field.repeatableGroup && field.repeatableGroup !== DEFAULT_REPEATABLE_GROUP_KEY
+            ? field.repeatableGroup
+            : DEFAULT_REPEATABLE_TABLE_GROUP_KEY;
+        }
+
+        return field.repeatableGroup && field.repeatableGroup !== DEFAULT_REPEATABLE_TABLE_GROUP_KEY
+          ? field.repeatableGroup
+          : DEFAULT_REPEATABLE_GROUP_KEY;
+      })(),
+      repeatableLayout:
+        placement === "single" ? undefined : placement === "table" ? "table" : "blocks",
+      isResultField: placement === "single" ? field.isResultField : false,
     }));
   };
 
@@ -138,7 +150,11 @@ export const TemplateTypesEditor = ({
   ) => {
     updateSelectedField(formatId, fieldId, (field) => ({
       ...field,
-      repeatableGroup: blockName.trim() || DEFAULT_REPEATABLE_GROUP_KEY,
+      repeatableGroup:
+        blockName.trim() ||
+        (field.repeatableLayout === "table"
+          ? DEFAULT_REPEATABLE_TABLE_GROUP_KEY
+          : DEFAULT_REPEATABLE_GROUP_KEY),
       isResultField: false,
     }));
   };
@@ -147,10 +163,15 @@ export const TemplateTypesEditor = ({
     if (!template) return;
 
     const nextIndex = template.formats.length + 1;
-    const nextFormat = createContractFormat({
-      name: `Tipo ${nextIndex}`,
-      description: "Formato personalizado.",
-    });
+    const nextFormat = selectedFormat
+      ? cloneContractFormat(selectedFormat, {
+          name: `Tipo ${nextIndex}`,
+          description: selectedFormat.description || "Formato personalizado.",
+        })
+      : createContractFormat({
+          name: `Tipo ${nextIndex}`,
+          description: "Formato personalizado.",
+        });
 
     updateSelectedTemplate((currentTemplate) => ({
       ...currentTemplate,
@@ -191,6 +212,14 @@ export const TemplateTypesEditor = ({
     setSelectedFormatId(nextSelectedFormatId);
   };
 
+  const handleSetDefaultFormat = (formatId: string) => {
+    updateSelectedTemplate((currentTemplate) => ({
+      ...currentTemplate,
+      defaultFormatId: formatId,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   if (!template) {
     return (
       <Card className="shadow-soft-sm">
@@ -207,7 +236,7 @@ export const TemplateTypesEditor = ({
 
   return (
     <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <Card className="shadow-soft-sm">
+      <Card className="shadow-soft-sm sticky top-0 h-fit">
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <CardTitle className="text-sm font-medium">Tipos de contrato</CardTitle>
@@ -217,7 +246,7 @@ export const TemplateTypesEditor = ({
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="max-h-[calc(100vh-220px)] overflow-y-auto">
           <div className="space-y-2">
             {template.formats.map((format, index) => (
               <button
@@ -258,22 +287,33 @@ export const TemplateTypesEditor = ({
                   Tipo seleccionado: {selectedFormat.name}.
                 </p>
               </div>
-              {template.formats.length > 1 ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="w-full text-destructive hover:text-destructive sm:w-auto"
-                  disabled={isSelectedFormatDefault}
-                  onClick={() => handleRemoveFormat(selectedFormat.id)}
-                >
-                  <Trash2 className="mr-1.5 h-4 w-4" />
-                  Eliminar tipo
-                </Button>
-              ) : null}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {!isSelectedFormatDefault && template.formats.length > 1 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSetDefaultFormat(selectedFormat.id)}
+                  >
+                    Establecer como por defecto
+                  </Button>
+                ) : null}
+                {template.formats.length > 1 ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full text-destructive hover:text-destructive sm:w-auto"
+                    disabled={isSelectedFormatDefault}
+                    onClick={() => handleRemoveFormat(selectedFormat.id)}
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4" />
+                    Eliminar tipo
+                  </Button>
+                ) : null}
+              </div>
             </div>
-            {isSelectedFormatDefault ? (
+            {isSelectedFormatDefault && template.formats.length > 1 ? (
               <p className="text-xs text-muted-foreground">
-                No se puede eliminar este tipo porque esta configurado en el contrato seleccionado.
+                No se puede eliminar este tipo porque es el formato por defecto. Establece otro formato como por defecto primero.
               </p>
             ) : null}
           </CardHeader>
@@ -311,7 +351,7 @@ export const TemplateTypesEditor = ({
                 <h3 className="text-sm font-semibold">Campos del formato</h3>
                 <p className="text-xs text-muted-foreground">
                   Esto es lo que se pedira en el paso Campos de Nueva inspeccion,
-                  incluyendo si cada campo sera individual o de bloque.
+                  incluyendo si cada campo sera individual, de bloque o de cuadro.
                 </p>
               </div>
               <Button
@@ -386,12 +426,18 @@ export const TemplateTypesEditor = ({
 
                       <EditorField label="Ubicacion">
                         <Select
-                          value={field.repeatableGroup ? "block" : "single"}
+                          value={
+                            field.repeatableGroup
+                              ? field.repeatableLayout === "table"
+                                ? "table"
+                                : "block"
+                              : "single"
+                          }
                           onValueChange={(value) =>
                             handleFieldPlacementChange(
                               selectedFormat.id,
                               field.id,
-                              value as "single" | "block",
+                              value as "single" | "block" | "table",
                             )
                           }
                         >
@@ -401,6 +447,7 @@ export const TemplateTypesEditor = ({
                           <SelectContent>
                             <SelectItem value="single">Campo individual</SelectItem>
                             <SelectItem value="block">Campo de bloque</SelectItem>
+                            <SelectItem value="table">Campo de cuadro</SelectItem>
                           </SelectContent>
                         </Select>
                       </EditorField>
@@ -437,12 +484,41 @@ export const TemplateTypesEditor = ({
                       </div>
                     )}
 
+                    {field.type === "image" && (
+                      <div className="mt-4">
+                        <EditorField label="Formato de galería de imágenes">
+                          <Select
+                            value={field.imageLayout || "grid3x3"}
+                            onValueChange={(value) =>
+                              updateSelectedField(selectedFormat.id, field.id, (currentField) => ({
+                                ...currentField,
+                                imageLayout: value as "rows" | "grid3x3",
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="grid3x3">Cuadrícula 3x3</SelectItem>
+                              <SelectItem value="rows">En filas (2 columnas)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </EditorField>
+                      </div>
+                    )}
+
                     {field.repeatableGroup && (
                       <div className="mt-4 space-y-3 rounded-md border border-border/70 bg-muted/10 p-3">
-                        <EditorField label="Nombre del bloque">
+                        <EditorField
+                          label={field.repeatableLayout === "table" ? "Nombre del cuadro" : "Nombre del bloque"}
+                        >
                           <Input
                             value={
-                              field.repeatableGroup === DEFAULT_REPEATABLE_GROUP_KEY
+                              field.repeatableGroup ===
+                              (field.repeatableLayout === "table"
+                                ? DEFAULT_REPEATABLE_TABLE_GROUP_KEY
+                                : DEFAULT_REPEATABLE_GROUP_KEY)
                                 ? ""
                                 : field.repeatableGroup
                             }
@@ -453,19 +529,28 @@ export const TemplateTypesEditor = ({
                                 event.target.value,
                               )
                             }
-                            placeholder="Ej. Hallazgos"
+                            placeholder={field.repeatableLayout === "table" ? "Ej. Extintores" : "Ej. Hallazgos"}
                           />
                         </EditorField>
                         <p className="text-xs text-muted-foreground">
-                          Los campos con el mismo nombre de bloque se agrupan juntos.
-                          Dejalo vacio para usar {getRepeatableGroupLabel(DEFAULT_REPEATABLE_GROUP_KEY)}.
+                          Los campos con el mismo nombre se agrupan juntos en el mismo{" "}
+                          {field.repeatableLayout === "table" ? "cuadro" : "bloque"}.
+                          Dejalo vacio para usar{" "}
+                          {getRepeatableGroupLabel(
+                            field.repeatableLayout === "table"
+                              ? DEFAULT_REPEATABLE_TABLE_GROUP_KEY
+                              : DEFAULT_REPEATABLE_GROUP_KEY,
+                          )}
+                          .
                         </p>
                       </div>
                     )}
 
                     <div className="mt-4 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                       {field.repeatableGroup
-                        ? `Este campo aparecera dentro de ${getRepeatableGroupLabel(field.repeatableGroup)} y se repetira al agregar nuevos bloques.`
+                        ? field.repeatableLayout === "table"
+                          ? `Este campo aparecera dentro de ${getRepeatableGroupLabel(field.repeatableGroup)} y se repetira al agregar nuevas filas del cuadro.`
+                          : `Este campo aparecera dentro de ${getRepeatableGroupLabel(field.repeatableGroup)} y se repetira al agregar nuevos bloques.`
                         : "Este campo aparecera una sola vez en el formulario de la inspeccion."}
                     </div>
 
@@ -499,7 +584,9 @@ export const TemplateTypesEditor = ({
                           {field.type === "image"
                             ? "La imagen no puede ser resultado"
                             : field.repeatableGroup
-                              ? "Un campo de bloque no puede ser resultado"
+                              ? field.repeatableLayout === "table"
+                                ? "Un campo de cuadro no puede ser resultado"
+                                : "Un campo de bloque no puede ser resultado"
                               : "Usar como resultado del informe"}
                         </span>
                       </div>

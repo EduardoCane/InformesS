@@ -19,6 +19,7 @@ import { exportToDOCX, exportToPDF } from "@/lib/exporters";
 import {
   getInspectionImageSources,
   getInspectionFormatSections,
+  getRepeatableLayout,
   getRepeatableGroupLabel,
   readInspectionFormatSnapshot,
 } from "@/lib/reportTemplates";
@@ -263,7 +264,103 @@ const InspectionDetail = () => {
                         </span>
                       )}
                     </div>
-                  ) : (
+                  ) : getRepeatableLayout(section.fields) === "table" ? (() => {
+                    const nonImageFields = section.fields.filter((field) => field.type !== "image");
+                    const locationField =
+                      nonImageFields.find((field) => field.label.toLowerCase().includes("ubic")) ??
+                      nonImageFields[0] ??
+                      section.fields[0];
+                    const statusFields = section.fields.filter((field) => field.id !== locationField?.id);
+
+                    return (
+                      <div
+                        key={`${section.groupKey}-${sectionIndex}`}
+                        className="space-y-3 border-b border-border pb-3 last:border-0"
+                      >
+                        <div>
+                          <p className="font-medium">{getRepeatableGroupLabel(section.groupKey)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {section.blocks.length
+                              ? `${section.blocks.length} fila(s)`
+                              : "Sin filas registradas"}
+                          </p>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-lg border border-border">
+                          <table className="w-full min-w-[760px] border-collapse text-sm">
+                            <thead>
+                              <tr className="bg-[#fbbf24] text-black">
+                                <th className="w-16 border border-border px-3 py-2 text-center font-semibold">
+                                  Nº
+                                </th>
+                                <th className="w-56 border border-border px-3 py-2 text-center font-semibold uppercase">
+                                  {locationField?.label ?? "Ubicacion"}
+                                </th>
+                                <th className="border border-border px-3 py-2 text-center font-semibold uppercase">
+                                  Estado
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {section.blocks.map((block) => {
+                                const locationEntry = locationField
+                                  ? block.entries.find(({ field }) => field.id === locationField.id)
+                                  : null;
+
+                                return (
+                                  <tr key={`${section.groupKey}-${block.index}`} className="align-top">
+                                    <td className="border border-border px-3 py-4 text-center font-medium">
+                                      {String(block.index).padStart(2, "0")}
+                                    </td>
+                                    <td className="border border-border px-3 py-4 text-center align-middle font-medium">
+                                      {String(locationEntry?.value ?? "-") || "-"}
+                                    </td>
+                                    <td className="border border-border px-3 py-4">
+                                      <div className="space-y-4">
+                                        {statusFields.map((statusField) => {
+                                          const statusEntry = block.entries.find(
+                                            ({ field }) => field.id === statusField.id,
+                                          );
+                                          const value = statusEntry?.value;
+
+                                          return (
+                                            <div key={`${statusField.id}-${block.index}`} className="space-y-2">
+                                              {statusField.type === "image" ? (
+                                                getInspectionImageSources(value).length > 0 ? (
+                                                  <ImageGallery
+                                                    images={getInspectionImageSources(value)}
+                                                    label={statusField.label}
+                                                  />
+                                                ) : (
+                                                  <span className="text-muted-foreground">Sin imagen</span>
+                                                )
+                                              ) : statusField.type === "textarea" ? (
+                                                <RichTextContent
+                                                  value={value}
+                                                  className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-left"
+                                                />
+                                              ) : (
+                                                <p>
+                                                  <span className="text-muted-foreground">{statusField.label}: </span>
+                                                  <span className="font-medium">
+                                                    {String(value ?? "-") || "-"}
+                                                  </span>
+                                                </p>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })() : (
                     <div
                       key={`${section.groupKey}-${sectionIndex}`}
                       className="space-y-3 border-b border-border pb-3 last:border-0"

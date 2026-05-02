@@ -41,6 +41,8 @@ export const useContractTemplates = (useForEditor = false) => {
               required: field.required,
               isResultField: field.isResultField,
               repeatableGroup: field.repeatableGroup,
+              repeatableLayout: field.repeatableLayout,
+              imageLayout: field.imageLayout,
             }))
           : [],
       }));

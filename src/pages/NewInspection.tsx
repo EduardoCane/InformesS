@@ -35,6 +35,7 @@ import {
 import {
   ContractTemplate,
   extractInspectionEvidenceEntries,
+  getRepeatableLayout,
   getRepeatableGroupLabel,
   ReportFormatDefinition,
   buildInspectionDynamicFields,
@@ -1450,6 +1451,286 @@ const Step3 = ({
     </Field>
   );
 
+  const renderRepeatableFieldControl = (
+    groupField: ReportFormatDefinition["fields"][number],
+    blockIndex: number,
+    currentValue: string | string[],
+    emptyImageText = "Aun no se han cargado imagenes para esta fila.",
+  ) => (
+    <>
+      {groupField.type === "text" && (
+        <Input
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onChange={(event) =>
+            handleRepeatableFieldChange(
+              groupField.id,
+              blockIndex,
+              event.target.value,
+            )
+          }
+        />
+      )}
+
+      {groupField.type === "textarea" && (
+        <RichTextEditor
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onChange={(nextValue) =>
+            handleRepeatableFieldChange(
+              groupField.id,
+              blockIndex,
+              nextValue,
+            )
+          }
+          minHeightClassName="min-h-[120px]"
+        />
+      )}
+
+      {groupField.type === "select" && (
+        <Select
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onValueChange={(value) =>
+            handleRepeatableFieldChange(groupField.id, blockIndex, value)
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecciona una opcion" />
+          </SelectTrigger>
+          <SelectContent>
+            {groupField.options.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {groupField.type === "radio" && (
+        <RadioGroup
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onValueChange={(value) =>
+            handleRepeatableFieldChange(groupField.id, blockIndex, value)
+          }
+          className="flex flex-wrap gap-4"
+        >
+          {groupField.options.map((option) => (
+            <div key={option} className="flex items-center gap-2">
+              <RadioGroupItem
+                value={option}
+                id={`${groupField.id}-${blockIndex}-${option}`}
+              />
+              <Label
+                htmlFor={`${groupField.id}-${blockIndex}-${option}`}
+                className="font-normal"
+              >
+                {option}
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
+      )}
+
+      {groupField.type === "image" && (
+        <div className="space-y-3">
+          <label
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border p-4 text-center transition-colors hover:border-primary hover:bg-accent/30"
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.add("border-primary", "bg-accent/30");
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.remove("border-primary", "bg-accent/30");
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.remove("border-primary", "bg-accent/30");
+              void handleImageFieldChange(
+                groupField.id,
+                event.dataTransfer.files,
+                blockIndex,
+              );
+            }}
+          >
+            <ImageIcon className="h-5 w-5 text-muted-foreground" />
+            <p className="text-sm font-medium">Subir imagenes</p>
+            <p className="text-xs text-muted-foreground">
+              PNG o JPG - Puedes seleccionar varias o arrastra aqui
+            </p>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                void handleImageFieldChange(
+                  groupField.id,
+                  event.target.files,
+                  blockIndex,
+                );
+                event.target.value = "";
+              }}
+            />
+          </label>
+
+          {Array.isArray(currentValue) && currentValue.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {currentValue.map((imageDataUrl, imageIndex) => (
+                <div
+                  key={imageIndex}
+                  className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted"
+                >
+                  <img
+                    src={imageDataUrl}
+                    alt={`${groupField.label} ${imageIndex + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const images = currentValue.filter(
+                        (entry): entry is string => typeof entry === "string",
+                      );
+                      const updated = images.filter((_, index) => index !== imageIndex);
+                      handleRepeatableFieldChange(
+                        groupField.id,
+                        blockIndex,
+                        updated,
+                      );
+                    }}
+                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    <X className="h-5 w-5 text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">{emptyImageText}</p>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const renderTableGroup = (
+    groupKey: string,
+    groupFields: ReportFormatDefinition["fields"],
+    blockCount: number,
+  ) => {
+    const nonImageFields = groupFields.filter((groupField) => groupField.type !== "image");
+    const locationField =
+      nonImageFields.find((groupField) =>
+        groupField.label.toLowerCase().includes("ubic"),
+      ) ??
+      nonImageFields[0] ??
+      groupFields[0];
+    const statusFields = groupFields.filter((groupField) => groupField.id !== locationField?.id);
+
+    return (
+      <div key={groupKey} className="space-y-4 rounded-xl border border-border bg-muted/10 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">{getRepeatableGroupLabel(groupKey)}</h3>
+            <p className="text-xs text-muted-foreground">
+              Agrega filas para registrar ubicacion, estado e imagenes en formato de cuadro.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handleAddBlock(groupKey, groupFields)}
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Agregar fila
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
+            <thead>
+              <tr className="bg-[#fbbf24] text-black">
+                <th className="w-16 border border-border px-3 py-2 text-center font-semibold">
+                  Nº
+                </th>
+                <th className="w-56 border border-border px-3 py-2 text-center font-semibold uppercase">
+                  {locationField?.label ?? "Ubicacion"}
+                </th>
+                <th className="border border-border px-3 py-2 text-center font-semibold uppercase">
+                  Estado
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: blockCount }, (_, blockIndex) => {
+                const locationValue = locationField
+                  ? normalizeDynamicFieldArray(values[locationField.id])[blockIndex] ?? ""
+                  : "";
+
+                return (
+                  <tr key={`${groupKey}-row-${blockIndex}`} className="align-top">
+                    <td className="border border-border px-3 py-4 text-center font-medium">
+                      {String(blockIndex + 1).padStart(2, "0")}
+                    </td>
+                    <td className="border border-border px-3 py-4">
+                      {locationField ? (
+                        renderRepeatableFieldControl(locationField, blockIndex, locationValue)
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="border border-border px-3 py-4">
+                      <div className="space-y-4">
+                        {statusFields.length > 0 ? (
+                          statusFields.map((statusField) => {
+                            const blockValues = normalizeDynamicFieldArray(values[statusField.id]);
+                            const currentValue = blockValues[blockIndex] ?? "";
+
+                            return (
+                              <div key={`${statusField.id}-${blockIndex}`} className="space-y-1.5">
+                                <Label className="text-xs">
+                                  {statusField.label}
+                                  {statusField.required ? " *" : ""}
+                                </Label>
+                                {renderRepeatableFieldControl(
+                                  statusField,
+                                  blockIndex,
+                                  currentValue,
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <span className="text-muted-foreground">Sin campos de estado.</span>
+                        )}
+
+                        {blockCount > 1 && (
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleRemoveBlock(groupKey, groupFields, blockIndex)}
+                            >
+                              <Trash2 className="mr-1.5 h-4 w-4" />
+                              Eliminar fila
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -1506,6 +1787,10 @@ const Step3 = ({
                 1,
                 ...groupFields.map((groupField) => normalizeDynamicFieldArray(values[groupField.id]).length),
               );
+
+              if (getRepeatableLayout(groupFields) === "table") {
+                return renderTableGroup(groupKey, groupFields, blockCount);
+              }
 
               return (
                 <div key={groupKey} className="space-y-4 rounded-xl border border-border bg-muted/10 p-4">

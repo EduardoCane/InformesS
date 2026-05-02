@@ -28,6 +28,7 @@ import type {
 import {
   getInspectionImageSources,
   getInspectionFormatSections,
+  getRepeatableLayout,
   getRepeatableGroupLabel,
   readInspectionFormatSnapshot,
 } from "./reportTemplates";
@@ -58,6 +59,7 @@ type NormalExportBlock = {
   observations: string[];
   recommendations: string[];
   images: string[];
+  imageLayout?: "rows" | "grid3x3";
 };
 
 type NormalExportPayload = {
@@ -85,6 +87,7 @@ type CompletoExportBlock = {
   productionDate: string;
   observations: string;
   images: string[];
+  imageLayout?: "rows" | "grid3x3";
 };
 
 type CompletoExportPayload = {
@@ -324,6 +327,37 @@ const findBlockImages = (
 
   return entry ? getInspectionImageSources(entry.value) : [];
 };
+
+const findBlockImageLayout = (
+  block: Extract<InspectionFormatSection, { type: "group" }>["blocks"][number],
+): "rows" | "grid3x3" | undefined => {
+  const entry =
+    block.entries.find(
+      ({ field }) =>
+        field.type === "image" &&
+        (fieldMatches(field, NORMAL_FIELD_MATCHERS.images) || field.type === "image"),
+    ) ?? block.entries.find(({ field }) => field.type === "image");
+
+  return entry?.field.imageLayout;
+};
+
+const getTableGroupFields = (fields: ContractFieldDefinition[]) => {
+  const nonImageFields = fields.filter((field) => field.type !== "image");
+  const locationField =
+    nonImageFields.find((field) => normalizeComparisonText(field.label).includes("ubic")) ??
+    nonImageFields[0] ??
+    fields[0];
+
+  return {
+    locationField,
+    statusFields: fields.filter((field) => field.id !== locationField?.id),
+  };
+};
+
+const findBlockEntryValue = (
+  block: Extract<InspectionFormatSection, { type: "group" }>["blocks"][number],
+  fieldId: string | undefined,
+) => block.entries.find(({ field }) => field.id === fieldId)?.value;
 
 const parsePerson = (
   name: string | null | undefined,
@@ -755,6 +789,11 @@ const shouldUseCompletoLayout = (context: ExportContext) => {
   return hasAreaField && hasResponsibleField;
 };
 
+const hasTableLayoutSections = (context: ExportContext) =>
+  context.formatSections.some(
+    (section) => section.type === "group" && getRepeatableLayout(section.fields) === "table",
+  );
+
 const buildNormalExportPayload = async (
   inspection: Inspection,
   context: ExportContext,
@@ -800,6 +839,7 @@ const buildNormalExportPayload = async (
 
   const blocks = context.formatSections.flatMap((section) => {
     if (section.type !== "group") return [];
+    if (getRepeatableLayout(section.fields) === "table") return [];
 
     return section.blocks.map<NormalExportBlock>((block) => ({
       index: block.index,
@@ -808,6 +848,7 @@ const buildNormalExportPayload = async (
       observations: findBlockBulletValues(block, NORMAL_FIELD_MATCHERS.observations),
       recommendations: findBlockBulletValues(block, NORMAL_FIELD_MATCHERS.recommendations),
       images: findBlockImages(block),
+      imageLayout: findBlockImageLayout(block),
     }));
   });
 
@@ -873,6 +914,7 @@ const buildCompletoExportPayload = async (
 
   const blocks = context.formatSections.flatMap((section) => {
     if (section.type !== "group") return [];
+    if (getRepeatableLayout(section.fields) === "table") return [];
 
     return section.blocks.map<CompletoExportBlock>((block) => ({
       index: block.index,
@@ -882,6 +924,7 @@ const buildCompletoExportPayload = async (
       productionDate: findBlockTextValue(block, COMPLETO_FIELD_MATCHERS.productionDate),
       observations: findBlockTextValue(block, COMPLETO_FIELD_MATCHERS.observations),
       images: findBlockImages(block),
+      imageLayout: findBlockImageLayout(block),
     }));
   });
 
@@ -1363,11 +1406,17 @@ const addNormalPdfPhotoPages = async (
   if (imageAssets.length === 0) return;
 
   const pageWidth = doc.internal.pageSize.getWidth();
+  const isGrid3x3 = block.imageLayout === "grid3x3";
+  const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
 
-  for (const imageChunk of chunkArray(imageAssets, PHOTO_PAGE_CAPACITY)) {
+  for (const imageChunk of chunkArray(imageAssets, capacity)) {
     doc.addPage();
     addPdfBadge(doc, contractName, cornerLogoAsset);
-    const slots = buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
+    
+    const slots = isGrid3x3 
+      ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length).slots
+      : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
+    
     const preparedAssets = await Promise.all(
       imageChunk.map((asset, index) =>
         prepareImageAssetForFrame(asset, slots[index].width, slots[index].height, {
@@ -1496,14 +1545,20 @@ const addCompletoPhotoPages = async (
   if (imageAssets.length === 0) return;
 
   const pageWidth = doc.internal.pageSize.getWidth();
+  const isGrid3x3 = block.imageLayout === "grid3x3";
+  const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
 
-  for (const imageChunk of chunkArray(imageAssets, PHOTO_PAGE_CAPACITY_COMPLETO)) {
+  for (const imageChunk of chunkArray(imageAssets, capacity)) {
     doc.addPage();
     addPdfBadge(doc, contractName, cornerLogoAsset);
-    const { slots } = buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
-      topY: 110,
-      availableHeight: 620,
-    });
+    
+    const slots = isGrid3x3 
+      ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
+          topY: 110,
+          availableHeight: 620,
+        }).slots
+      : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
+    
     const preparedAssets = await Promise.all(
       imageChunk.map((asset, index) =>
         prepareImageAssetForFrame(asset, slots[index].width, slots[index].height, {
@@ -1587,6 +1642,7 @@ const exportCompletoToPDF = async (
 
   addNormalPdfHeader(doc, payload, cursor, cornerLogoAsset);
   addNormalPdfIntro(doc, payload, cursor);
+  await addReportPdfTableSections(doc, cursor, context);
 
   for (let index = 0; index < payload.blocks.length; index += 1) {
     const block = payload.blocks[index];
@@ -1646,12 +1702,24 @@ const exportCompletoToPDF = async (
     cursor.y += 8;
 
     if (imageAssets.length > 0) {
-      for (const imageChunk of chunkArray(imageAssets, PHOTO_PAGE_CAPACITY_COMPLETO)) {
-        const layout = buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length);
-        ensurePdfSpace(doc, cursor, layout.totalHeight + 16);
-        const { slots, totalHeight } = buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
-          topY: cursor.y,
-        });
+      const isGrid3x3 = block.imageLayout === "grid3x3";
+      const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
+      
+      for (const imageChunk of chunkArray(imageAssets, capacity)) {
+        const galleryLayout = isGrid3x3
+          ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length)
+          : { slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length), totalHeight: imageChunk.length * 200 };
+        
+        ensurePdfSpace(doc, cursor, galleryLayout.totalHeight + 16);
+        const { slots, totalHeight } = isGrid3x3
+          ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
+              topY: cursor.y,
+            })
+          : { 
+              slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length),
+              totalHeight: imageChunk.length * 200
+            };
+        
         const preparedAssets = await Promise.all(
           imageChunk.map((asset, idx) =>
             prepareImageAssetForFrame(asset, slots[idx].width, slots[idx].height, {
@@ -1671,13 +1739,18 @@ const exportCompletoToPDF = async (
       }
     }
 
-    // Agregar imágenes en galería 3x3 sin crear nueva página
+    // Agregar imágenes en galería según configuración
     if (block.index < 0 && imageAssets.length > 0) {
-      for (const imageChunk of chunkArray(imageAssets, PHOTO_PAGE_CAPACITY_COMPLETO)) {
-        const { slots } = buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length);
+      const isGrid3x3 = block.imageLayout === "grid3x3";
+      const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
+      
+      for (const imageChunk of chunkArray(imageAssets, capacity)) {
+        const { slots } = isGrid3x3
+          ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length)
+          : { slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length) };
 
         // Calcular altura necesaria
-        const rows = Math.ceil(imageChunk.length / 3);
+        const rows = Math.ceil(imageChunk.length / (isGrid3x3 ? 3 : 2));
         const totalImageHeight = rows * 155 + (rows - 1) * 10 + 20;
         ensurePdfSpace(doc, cursor, totalImageHeight);
 
@@ -1726,6 +1799,7 @@ const exportNormalToPDF = async (
 
   addNormalPdfHeader(doc, payload, cursor, cornerLogoAsset);
   addNormalPdfIntro(doc, payload, cursor);
+  await addReportPdfTableSections(doc, cursor, context);
 
   for (let index = 0; index < payload.blocks.length; index += 1) {
     const block = payload.blocks[index];
@@ -1795,6 +1869,41 @@ const exportNormalToPDF = async (
   doc.save(fileName);
 };
 
+const exportTableLayoutToPDF = async (
+  inspection: Inspection,
+  context: ExportContext,
+) => {
+  const payload = await buildNormalExportPayload(inspection, context);
+  const cornerLogoAsset = await loadCornerLogoAsset();
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const cursor: PdfCursor = { y: PAGE_MARGIN };
+
+  addNormalPdfHeader(doc, payload, cursor, cornerLogoAsset);
+  addNormalPdfIntro(doc, payload, cursor);
+  await addReportPdfTableSections(doc, cursor, context);
+
+  if (payload.finalItems.length > 0) {
+    doc.addPage();
+    addPdfBadge(doc, payload.contractName, cornerLogoAsset);
+    cursor.y = 102;
+    drawPdfAccentHeading(doc, cursor, "CONCLUSIONES Y RECOMENDACIONES:", PAGE_MARGIN + 56);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    drawBulletListPdf(doc, cursor, payload.finalItems, {
+      x: PAGE_MARGIN + 24,
+      width: pageWidth - PAGE_MARGIN * 2 - 24,
+    });
+    cursor.y += 8;
+  }
+
+  addNormalPdfSignatureTable(doc, payload, cursor);
+  addPdfPageNumbers(doc);
+
+  const fileName = `inspeccion-${inspection.inspection_date ?? "sf"}-${inspection.id.slice(0, 8)}.pdf`;
+  doc.save(fileName);
+};
+
 const buildGenericPdfSectionTitle = (
   doc: jsPDF,
   cursor: PdfCursor,
@@ -1828,6 +1937,369 @@ const buildGenericPdfRow = (
   const lines = doc.splitTextToSize(value || "-", pageWidth - PAGE_MARGIN * 2 - 140);
   doc.text(lines, PAGE_MARGIN + 140, cursor.y);
   cursor.y += Math.max(16, lines.length * 14);
+};
+
+const drawCenteredTextPdf = (
+  doc: jsPDF,
+  text: string,
+  x: number,
+  width: number,
+  y: number,
+) => {
+  const textWidth = doc.getTextWidth(text);
+  doc.text(text, x + Math.max(0, (width - textWidth) / 2), y);
+};
+
+const buildGenericPdfTableGroup = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  sectionItem: Extract<InspectionFormatSection, { type: "group" }>,
+  context: ExportContext,
+) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const tableX = PAGE_MARGIN;
+  const tableWidth = pageWidth - PAGE_MARGIN * 2;
+  const numberWidth = 52;
+  const locationWidth = 155;
+  const statusWidth = tableWidth - numberWidth - locationWidth;
+  const headerHeight = 22;
+  const { locationField, statusFields } = getTableGroupFields(sectionItem.fields);
+
+  ensurePdfSpace(doc, cursor, 30);
+
+  const drawHeader = () => {
+    ensurePdfSpace(doc, cursor, headerHeight + 8);
+    doc.setFillColor(251, 191, 36);
+    doc.setDrawColor(0, 0, 0);
+    doc.rect(tableX, cursor.y, tableWidth, headerHeight, "FD");
+    doc.line(tableX + numberWidth, cursor.y, tableX + numberWidth, cursor.y + headerHeight);
+    doc.line(
+      tableX + numberWidth + locationWidth,
+      cursor.y,
+      tableX + numberWidth + locationWidth,
+      cursor.y + headerHeight,
+    );
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    drawCenteredTextPdf(doc, "Nº", tableX, numberWidth, cursor.y + 14);
+    drawCenteredTextPdf(
+      doc,
+      locationField?.label.toUpperCase() ?? "UBICACION",
+      tableX + numberWidth,
+      locationWidth,
+      cursor.y + 14,
+    );
+    drawCenteredTextPdf(
+      doc,
+      "ESTADO",
+      tableX + numberWidth + locationWidth,
+      statusWidth,
+      cursor.y + 14,
+    );
+    cursor.y += headerHeight;
+  };
+
+  drawHeader();
+
+  if (sectionItem.blocks.length === 0) {
+    const rowHeight = 32;
+    doc.setDrawColor(0, 0, 0);
+    doc.rect(tableX, cursor.y, tableWidth, rowHeight);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(51, 65, 85);
+    doc.text("Sin filas registradas", tableX + 8, cursor.y + 20);
+    cursor.y += rowHeight + 8;
+    return;
+  }
+
+  for (const block of sectionItem.blocks) {
+    const locationValue = context.fieldValueText(
+      locationField?.type ?? "text",
+      findBlockEntryValue(block, locationField?.id),
+    );
+    const statusTextGroups = statusFields
+      .filter((field) => field.type !== "image")
+      .map((field) => {
+        const valueText = context.fieldValueText(field.type, findBlockEntryValue(block, field.id));
+        const prefix = normalizeComparisonText(field.label) === "estado" ? "- " : `${field.label}: `;
+        return doc.splitTextToSize(`${prefix}${valueText}`, statusWidth - 18) as string[];
+      })
+      .filter((lines) => lines.length > 0);
+    const statusTextHeight = Math.max(
+      14,
+      statusTextGroups.reduce((height, lines) => height + lines.length * 12 + 4, 0),
+    );
+    const imageAssets = (
+      await Promise.all(
+        statusFields
+          .filter((field) => field.type === "image")
+          .flatMap((field) => getInspectionImageSources(findBlockEntryValue(block, field.id)))
+          .map((source) => loadImageAsset(source)),
+      )
+    ).filter((asset): asset is LoadedImageAsset => Boolean(asset));
+    const imageWidth = Math.min(120, (statusWidth - 30) / 2);
+    const imageHeight = 118;
+    const imageRows = Math.ceil(imageAssets.length / 2);
+    const imageBlockHeight = imageAssets.length > 0 ? imageRows * (imageHeight + 8) + 4 : 0;
+    const rowHeight = Math.max(78, statusTextHeight + imageBlockHeight + 18);
+
+    if (cursor.y + rowHeight > pageHeight - PAGE_MARGIN) {
+      doc.addPage();
+      cursor.y = PAGE_MARGIN;
+      drawHeader();
+    }
+
+    const rowY = cursor.y;
+    const statusX = tableX + numberWidth + locationWidth;
+    doc.setDrawColor(0, 0, 0);
+    doc.rect(tableX, rowY, tableWidth, rowHeight);
+    doc.line(tableX + numberWidth, rowY, tableX + numberWidth, rowY + rowHeight);
+    doc.line(statusX, rowY, statusX, rowY + rowHeight);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    drawCenteredTextPdf(doc, String(block.index).padStart(2, "0"), tableX, numberWidth, rowY + rowHeight / 2);
+
+    const locationLines = doc.splitTextToSize(locationValue || "-", locationWidth - 14) as string[];
+    const locationStartY = rowY + rowHeight / 2 - ((locationLines.length - 1) * 12) / 2;
+    locationLines.forEach((line, lineIndex) => {
+      drawCenteredTextPdf(
+        doc,
+        line,
+        tableX + numberWidth,
+        locationWidth,
+        locationStartY + lineIndex * 12,
+      );
+    });
+
+    let contentY = rowY + 16;
+    doc.setTextColor(51, 65, 85);
+    statusTextGroups.forEach((lines) => {
+      doc.text(lines, statusX + 10, contentY);
+      contentY += lines.length * 12 + 4;
+    });
+
+    if (imageAssets.length > 0) {
+      contentY += 4;
+      imageAssets.forEach((asset, imageIndex) => {
+        const column = imageIndex % 2;
+        const row = Math.floor(imageIndex / 2);
+        drawLoadedImagePdf(
+          doc,
+          asset,
+          statusX + 10 + column * (imageWidth + 10),
+          contentY + row * (imageHeight + 8),
+          imageWidth,
+          imageHeight,
+          false,
+        );
+      });
+    }
+
+    cursor.y += rowHeight;
+  }
+
+  cursor.y += 10;
+};
+
+const addReportPdfTableSections = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  context: ExportContext,
+) => {
+  for (const sectionItem of context.formatSections) {
+    if (sectionItem.type !== "group" || getRepeatableLayout(sectionItem.fields) !== "table") {
+      continue;
+    }
+
+    await buildGenericPdfTableGroup(doc, cursor, sectionItem, context);
+  }
+};
+
+const isHeaderOrSignatureField = (field: ContractFieldDefinition) =>
+  [
+    NORMAL_FIELD_MATCHERS.initialDescription,
+    NORMAL_FIELD_MATCHERS.finalConclusions,
+    NORMAL_FIELD_MATCHERS.elaboratedBy,
+    NORMAL_FIELD_MATCHERS.reviewedBy,
+    NORMAL_FIELD_MATCHERS.approvedBy,
+    COMPLETO_FIELD_MATCHERS.initialDescription,
+    COMPLETO_FIELD_MATCHERS.elaboratedBy,
+    COMPLETO_FIELD_MATCHERS.reviewedBy,
+    COMPLETO_FIELD_MATCHERS.approvedBy,
+  ].some((matcher) => fieldMatches(field, matcher));
+
+const hasFormatImageValues = (context: ExportContext) =>
+  context.formatSections.some((sectionItem) => {
+    if (sectionItem.type === "field") {
+      return (
+        sectionItem.field.type === "image" &&
+        getInspectionImageSources(sectionItem.value).length > 0
+      );
+    }
+
+    return sectionItem.blocks.some((block) =>
+      block.entries.some(
+        ({ field, value }) =>
+          field.type === "image" && getInspectionImageSources(value).length > 0,
+      ),
+    );
+  });
+
+const addCustomMemoSingleField = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  sectionItem: Extract<InspectionFormatSection, { type: "field" }>,
+  context: ExportContext,
+) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  if (sectionItem.field.type !== "image") {
+    buildGenericPdfRow(
+      doc,
+      cursor,
+      `${sectionItem.field.label}:`,
+      context.fieldValueText(sectionItem.field.type, sectionItem.value),
+    );
+    return;
+  }
+
+  const imageSources = getInspectionImageSources(sectionItem.value);
+  buildGenericPdfRow(
+    doc,
+    cursor,
+    `${sectionItem.field.label}:`,
+    imageSources.length > 0 ? `${imageSources.length} imagen(es) adjuntas` : "Sin imagen",
+  );
+
+  const imageAssets = (
+    await Promise.all(imageSources.map((imageSource) => loadImageAsset(imageSource)))
+  ).filter((asset): asset is LoadedImageAsset => Boolean(asset));
+
+  if (imageAssets.length === 0) return;
+
+  const imageWidth = 130;
+  const imageHeight = 100;
+  const gap = 12;
+  const columns = Math.max(
+    1,
+    Math.floor((pageWidth - PAGE_MARGIN * 2 + gap) / (imageWidth + gap)),
+  );
+
+  for (const imageRow of chunkArray(imageAssets, columns)) {
+    ensurePdfSpace(doc, cursor, imageHeight + gap);
+
+    imageRow.forEach((asset, column) => {
+      drawLoadedImagePdf(
+        doc,
+        asset,
+        PAGE_MARGIN + column * (imageWidth + gap),
+        cursor.y,
+        imageWidth,
+        imageHeight,
+        false,
+      );
+    });
+
+    cursor.y += imageHeight + gap;
+  }
+
+  cursor.y += 8;
+};
+
+const addCustomMemoFormatSections = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  context: ExportContext,
+) => {
+  for (const sectionItem of context.formatSections) {
+    if (sectionItem.type === "field") {
+      if (!isHeaderOrSignatureField(sectionItem.field)) {
+        await addCustomMemoSingleField(doc, cursor, sectionItem, context);
+      }
+      continue;
+    }
+
+    await buildGenericPdfTableGroup(doc, cursor, sectionItem, context);
+  }
+};
+
+const addGenericEvidenceSection = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  evidences: Evidence[],
+) => {
+  if (evidences.length === 0) return;
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  drawPdfAccentHeading(doc, cursor, `EVIDENCIAS (${evidences.length}):`, PAGE_MARGIN + 18);
+
+  for (const evidence of evidences) {
+    ensurePdfSpace(doc, cursor, 190);
+    const imageSource = getEvidenceImageSource(evidence);
+    const asset = imageSource ? await loadImageAsset(imageSource) : null;
+
+    if (asset) {
+      drawLoadedImagePdf(doc, asset, PAGE_MARGIN, cursor.y, 200, 150);
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(220, 38, 38);
+    doc.text(getEvidenceLabel(evidence), PAGE_MARGIN + 215, cursor.y + 14);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(51, 65, 85);
+    const comment = doc.splitTextToSize(
+      evidence.created_at
+        ? `Registrada el ${new Date(evidence.created_at).toLocaleString("es")}`
+        : "Sin detalle adicional",
+      pageWidth - PAGE_MARGIN * 2 - 220,
+    );
+    doc.text(comment, PAGE_MARGIN + 215, cursor.y + 32);
+    cursor.y += 170;
+  }
+};
+
+const exportCustomMemoToPDF = async (
+  inspection: Inspection,
+  evidences: Evidence[],
+  context: ExportContext,
+) => {
+  const payload = await buildNormalExportPayload(inspection, context);
+  const cornerLogoAsset = await loadCornerLogoAsset();
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const cursor: PdfCursor = { y: PAGE_MARGIN };
+
+  addNormalPdfHeader(doc, payload, cursor, cornerLogoAsset);
+  addNormalPdfIntro(doc, payload, cursor);
+  await addCustomMemoFormatSections(doc, cursor, context);
+
+  if (payload.finalItems.length > 0) {
+    cursor.y += 8;
+    drawPdfAccentHeading(doc, cursor, "CONCLUSIONES Y RECOMENDACIONES:", PAGE_MARGIN + 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    drawBulletListPdf(doc, cursor, payload.finalItems, {
+      x: PAGE_MARGIN + 24,
+      width: pageWidth - PAGE_MARGIN * 2 - 24,
+    });
+  }
+
+  if (!hasFormatImageValues(context)) {
+    await addGenericEvidenceSection(doc, cursor, evidences);
+  }
+
+  addNormalPdfSignatureTable(doc, payload, cursor);
+  addPdfPageNumbers(doc);
+
+  const fileName = `inspeccion-${inspection.inspection_date ?? "sf"}-${inspection.id.slice(0, 8)}.pdf`;
+  doc.save(fileName);
 };
 
 const exportGenericToPDF = async (
@@ -1877,6 +2349,11 @@ const exportGenericToPDF = async (
           `${sectionItem.field.label}:`,
           context.fieldValueText(sectionItem.field.type, sectionItem.value),
         );
+        continue;
+      }
+
+      if (getRepeatableLayout(sectionItem.fields) === "table") {
+        await buildGenericPdfTableGroup(doc, cursor, sectionItem, context);
         continue;
       }
 
@@ -2567,6 +3044,190 @@ const createGenericSectionHeading = (text: string) =>
     children: [createTextRun(text, { bold: true, color: "1E293B" })],
   });
 
+const createDocxTableHeaderCell = (text: string, width: number) =>
+  new TableCell({
+    width: { size: width, type: WidthType.DXA },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+      bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+      left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+      right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+    },
+    shading: { fill: "FBBF24", type: ShadingType.CLEAR, color: "auto" },
+    margins: { top: 70, bottom: 70, left: 80, right: 80 },
+    verticalAlign: VerticalAlign.CENTER,
+    children: [
+      createTextParagraph(text, {
+        alignment: AlignmentType.CENTER,
+        children: [createTextRun(text, { bold: true })],
+      }),
+    ],
+  });
+
+const createDocxTableCell = (
+  children: (Paragraph | Table)[],
+  width: number,
+  alignCenter = false,
+) =>
+  new TableCell({
+    width: { size: width, type: WidthType.DXA },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+      bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+      left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+      right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+    },
+    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+    verticalAlign: VerticalAlign.CENTER,
+    children: children.length > 0
+      ? children
+      : [
+          createTextParagraph("-", {
+            alignment: alignCenter ? AlignmentType.CENTER : AlignmentType.LEFT,
+          }),
+        ],
+  });
+
+const createDocxImageGridTable = (assets: LoadedImageAsset[]) => {
+  const emptyBorders = {
+    top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+  };
+
+  return new Table({
+    width: { size: 6200, type: WidthType.DXA },
+    columnWidths: [3100, 3100],
+    rows: chunkArray(assets, 2).map(
+      (rowAssets) =>
+        new TableRow({
+          children: Array.from({ length: 2 }, (_, index) => {
+            const asset = rowAssets[index];
+
+            return new TableCell({
+              width: { size: 3100, type: WidthType.DXA },
+              borders: emptyBorders,
+              margins: { top: 80, bottom: 80, left: 60, right: 60 },
+              children: asset
+                ? [createDocxImageParagraph(asset, 170, 170, AlignmentType.CENTER)]
+                : [createTextParagraph("")],
+            });
+          }),
+        }),
+    ),
+  });
+};
+
+const buildGenericDocxTableGroup = async (
+  sectionItem: Extract<InspectionFormatSection, { type: "group" }>,
+  context: ExportContext,
+): Promise<(Paragraph | Table)[]> => {
+  const { locationField, statusFields } = getTableGroupFields(sectionItem.fields);
+  const columnWidths = [760, 2400, 6200];
+  const rows: TableRow[] = [
+    new TableRow({
+      children: [
+        createDocxTableHeaderCell("Nº", columnWidths[0]),
+        createDocxTableHeaderCell(locationField?.label.toUpperCase() ?? "UBICACION", columnWidths[1]),
+        createDocxTableHeaderCell("ESTADO", columnWidths[2]),
+      ],
+    }),
+  ];
+
+  if (sectionItem.blocks.length === 0) {
+    rows.push(
+      new TableRow({
+        children: [
+          createDocxTableCell([createTextParagraph("-")], columnWidths[0], true),
+          createDocxTableCell([createTextParagraph("-")], columnWidths[1], true),
+          createDocxTableCell([createTextParagraph("Sin filas registradas")], columnWidths[2]),
+        ],
+      }),
+    );
+  }
+
+  for (const block of sectionItem.blocks) {
+    const locationValue = context.fieldValueText(
+      locationField?.type ?? "text",
+      findBlockEntryValue(block, locationField?.id),
+    );
+    const statusChildren: (Paragraph | Table)[] = [];
+
+    for (const field of statusFields) {
+      const value = findBlockEntryValue(block, field.id);
+
+      if (field.type === "image") {
+        const imageAssets = (
+          await Promise.all(
+            getInspectionImageSources(value).map((imageSource) => loadImageAsset(imageSource)),
+          )
+        ).filter((asset): asset is LoadedImageAsset => Boolean(asset));
+
+        if (imageAssets.length > 0) {
+          statusChildren.push(createDocxImageGridTable(imageAssets));
+        }
+        continue;
+      }
+
+      const valueText = context.fieldValueText(field.type, value);
+      const prefix = normalizeComparisonText(field.label) === "estado" ? "" : `${field.label}: `;
+      statusChildren.push(
+        createTextParagraph(`${prefix}${valueText}`, {
+          spacing: { after: 80 },
+          children: [
+            createTextRun(prefix, { bold: Boolean(prefix) }),
+            createTextRun(valueText),
+          ],
+        }),
+      );
+    }
+
+    rows.push(
+      new TableRow({
+        children: [
+          createDocxTableCell(
+            [
+              createTextParagraph(String(block.index).padStart(2, "0"), {
+                alignment: AlignmentType.CENTER,
+              }),
+            ],
+            columnWidths[0],
+            true,
+          ),
+          createDocxTableCell(
+            [
+              createTextParagraph(locationValue || "-", {
+                alignment: AlignmentType.CENTER,
+              }),
+            ],
+            columnWidths[1],
+            true,
+          ),
+          createDocxTableCell(statusChildren, columnWidths[2]),
+        ],
+      }),
+    );
+  }
+
+  return [
+    createTextParagraph(getRepeatableGroupLabel(sectionItem.groupKey), {
+      spacing: { before: 200, after: 100 },
+      children: [
+        createTextRun(getRepeatableGroupLabel(sectionItem.groupKey), {
+          bold: true,
+          color: "1E293B",
+        }),
+      ],
+    }),
+    new Table({
+      width: { size: 9360, type: WidthType.DXA },
+      columnWidths,
+      rows,
+    }),
+  ];
+};
+
 const exportGenericToDOCX = async (
   inspection: Inspection,
   evidences: Evidence[],
@@ -2598,7 +3259,14 @@ const exportGenericToDOCX = async (
   const blockChildren: (Paragraph | Table)[] = [];
   if (context.formatSections.length > 0) {
     for (const sectionItem of context.formatSections) {
-      if (sectionItem.type !== "group" || sectionItem.blocks.length === 0) continue;
+      if (sectionItem.type !== "group") continue;
+
+      if (getRepeatableLayout(sectionItem.fields) === "table") {
+        blockChildren.push(...(await buildGenericDocxTableGroup(sectionItem, context)));
+        continue;
+      }
+
+      if (sectionItem.blocks.length === 0) continue;
 
       for (const block of sectionItem.blocks) {
         const blockFields: Array<{ field: ContractFieldDefinition; value: unknown }> = [];
@@ -2811,6 +3479,11 @@ export const exportToPDF = async (inspection: Inspection, evidences: Evidence[])
     return;
   }
 
+  if (hasTableLayoutSections(context) || context.formatSections.length > 0) {
+    await exportCustomMemoToPDF(inspection, evidences, context);
+    return;
+  }
+
   await exportGenericToPDF(inspection, evidences, context);
 };
 
@@ -2824,4 +3497,3 @@ export const exportToDOCX = async (inspection: Inspection, evidences: Evidence[]
 
   await exportGenericToDOCX(inspection, evidences, context);
 };
-

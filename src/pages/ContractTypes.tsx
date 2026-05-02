@@ -48,6 +48,8 @@ const mapDbFormat = (dbFormat: any) => ({
         required: field.required,
         isResultField: field.isResultField,
         repeatableGroup: field.repeatableGroup,
+        repeatableLayout: field.repeatableLayout,
+        imageLayout: field.imageLayout,
       }))
     : [],
 });
