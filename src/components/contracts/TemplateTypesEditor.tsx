@@ -11,6 +11,10 @@ import {
   ContractTemplate,
   DEFAULT_REPEATABLE_GROUP_KEY,
   DEFAULT_REPEATABLE_TABLE_GROUP_KEY,
+<<<<<<< HEAD
+=======
+  cloneContractFormat,
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
   createContractField,
   createContractFormat,
   getRepeatableGroupLabel,
@@ -162,10 +166,15 @@ export const TemplateTypesEditor = ({
     if (!template) return;
 
     const nextIndex = template.formats.length + 1;
-    const nextFormat = createContractFormat({
-      name: `Tipo ${nextIndex}`,
-      description: "Formato personalizado.",
-    });
+    const nextFormat = selectedFormat
+      ? cloneContractFormat(selectedFormat, {
+          name: `Tipo ${nextIndex}`,
+          description: selectedFormat.description || "Formato personalizado.",
+        })
+      : createContractFormat({
+          name: `Tipo ${nextIndex}`,
+          description: "Formato personalizado.",
+        });
 
     updateSelectedTemplate((currentTemplate) => ({
       ...currentTemplate,

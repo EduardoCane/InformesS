@@ -1623,6 +1623,7 @@ const Step3 = ({
         />
       )}
 
+<<<<<<< HEAD
       {groupField.type === "date" && (
         <Input
           type="date"
@@ -1637,6 +1638,8 @@ const Step3 = ({
         />
       )}
 
+=======
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       {groupField.type === "textarea" && (
         <RichTextEditor
           value={typeof currentValue === "string" ? currentValue : ""}
@@ -1696,6 +1699,7 @@ const Step3 = ({
         </RadioGroup>
       )}
 
+<<<<<<< HEAD
       {shouldShowOtherInput(groupField, currentValue) && (
         <Input
           placeholder="Especificar..."
@@ -1709,6 +1713,8 @@ const Step3 = ({
         />
       )}
 
+=======
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       {groupField.type === "image" && (
         <div className="space-y-3">
           <label

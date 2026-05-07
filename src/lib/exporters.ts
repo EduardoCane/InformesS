@@ -98,10 +98,13 @@ type CompletoExportBlock = {
   observations: string;
   images: string[];
   imageLayout?: "rows" | "grid3x3";
+<<<<<<< HEAD
   allEntries: Array<{
     field: ContractFieldDefinition;
     value: unknown;
   }>;
+=======
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
 };
 
 type CompletoExportPayload = {
@@ -971,7 +974,10 @@ const buildCompletoExportPayload = async (
       observations: findBlockTextValue(block, COMPLETO_FIELD_MATCHERS.observations),
       images: findBlockImages(block),
       imageLayout: findBlockImageLayout(block),
+<<<<<<< HEAD
       allEntries: block.entries,
+=======
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     }));
   });
 
@@ -1487,11 +1493,19 @@ const addNormalPdfPhotoPages = async (
   for (const imageChunk of chunkArray(imageAssets, capacity)) {
     doc.addPage();
     addPdfBadge(doc, contractName, cornerLogoAsset);
+<<<<<<< HEAD
 
     const slots = isGrid3x3
       ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length).slots
       : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
 
+=======
+    
+    const slots = isGrid3x3 
+      ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length).slots
+      : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
+    
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     const preparedAssets = await Promise.all(
       imageChunk.map((asset, index) =>
         prepareImageAssetForFrame(asset, slots[index].width, slots[index].height, {
@@ -1626,14 +1640,23 @@ const addCompletoPhotoPages = async (
   for (const imageChunk of chunkArray(imageAssets, capacity)) {
     doc.addPage();
     addPdfBadge(doc, contractName, cornerLogoAsset);
+<<<<<<< HEAD
 
     const slots = isGrid3x3
+=======
+    
+    const slots = isGrid3x3 
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
           topY: 110,
           availableHeight: 620,
         }).slots
       : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     const preparedAssets = await Promise.all(
       imageChunk.map((asset, index) =>
         prepareImageAssetForFrame(asset, slots[index].width, slots[index].height, {
@@ -1785,22 +1808,38 @@ const exportCompletoToPDF = async (
     if (imageAssets.length > 0) {
       const isGrid3x3 = block.imageLayout === "grid3x3";
       const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
+<<<<<<< HEAD
 
+=======
+      
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       for (const imageChunk of chunkArray(imageAssets, capacity)) {
         const galleryLayout = isGrid3x3
           ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length)
           : { slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length), totalHeight: imageChunk.length * 200 };
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
         ensurePdfSpace(doc, cursor, galleryLayout.totalHeight + 16);
         const { slots, totalHeight } = isGrid3x3
           ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
               topY: cursor.y,
             })
+<<<<<<< HEAD
           : {
               slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length),
               totalHeight: imageChunk.length * 200
             };
 
+=======
+          : { 
+              slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length),
+              totalHeight: imageChunk.length * 200
+            };
+        
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
         const preparedAssets = await Promise.all(
           imageChunk.map((asset, idx) =>
             prepareImageAssetForFrame(asset, slots[idx].width, slots[idx].height, {
@@ -1824,7 +1863,11 @@ const exportCompletoToPDF = async (
     if (block.index < 0 && imageAssets.length > 0) {
       const isGrid3x3 = block.imageLayout === "grid3x3";
       const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
+<<<<<<< HEAD
 
+=======
+      
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       for (const imageChunk of chunkArray(imageAssets, capacity)) {
         const { slots } = isGrid3x3
           ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length)
@@ -2201,6 +2244,191 @@ const addReportPdfTableSections = async (
   }
 };
 
+<<<<<<< HEAD
+=======
+const isHeaderOrSignatureField = (field: ContractFieldDefinition) =>
+  [
+    NORMAL_FIELD_MATCHERS.initialDescription,
+    NORMAL_FIELD_MATCHERS.finalConclusions,
+    NORMAL_FIELD_MATCHERS.elaboratedBy,
+    NORMAL_FIELD_MATCHERS.reviewedBy,
+    NORMAL_FIELD_MATCHERS.approvedBy,
+    COMPLETO_FIELD_MATCHERS.initialDescription,
+    COMPLETO_FIELD_MATCHERS.elaboratedBy,
+    COMPLETO_FIELD_MATCHERS.reviewedBy,
+    COMPLETO_FIELD_MATCHERS.approvedBy,
+  ].some((matcher) => fieldMatches(field, matcher));
+
+const hasFormatImageValues = (context: ExportContext) =>
+  context.formatSections.some((sectionItem) => {
+    if (sectionItem.type === "field") {
+      return (
+        sectionItem.field.type === "image" &&
+        getInspectionImageSources(sectionItem.value).length > 0
+      );
+    }
+
+    return sectionItem.blocks.some((block) =>
+      block.entries.some(
+        ({ field, value }) =>
+          field.type === "image" && getInspectionImageSources(value).length > 0,
+      ),
+    );
+  });
+
+const addCustomMemoSingleField = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  sectionItem: Extract<InspectionFormatSection, { type: "field" }>,
+  context: ExportContext,
+) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  if (sectionItem.field.type !== "image") {
+    buildGenericPdfRow(
+      doc,
+      cursor,
+      `${sectionItem.field.label}:`,
+      context.fieldValueText(sectionItem.field.type, sectionItem.value),
+    );
+    return;
+  }
+
+  const imageSources = getInspectionImageSources(sectionItem.value);
+  buildGenericPdfRow(
+    doc,
+    cursor,
+    `${sectionItem.field.label}:`,
+    imageSources.length > 0 ? `${imageSources.length} imagen(es) adjuntas` : "Sin imagen",
+  );
+
+  const imageAssets = (
+    await Promise.all(imageSources.map((imageSource) => loadImageAsset(imageSource)))
+  ).filter((asset): asset is LoadedImageAsset => Boolean(asset));
+
+  if (imageAssets.length === 0) return;
+
+  const imageWidth = 130;
+  const imageHeight = 100;
+  const gap = 12;
+  const columns = Math.max(
+    1,
+    Math.floor((pageWidth - PAGE_MARGIN * 2 + gap) / (imageWidth + gap)),
+  );
+
+  for (const imageRow of chunkArray(imageAssets, columns)) {
+    ensurePdfSpace(doc, cursor, imageHeight + gap);
+
+    imageRow.forEach((asset, column) => {
+      drawLoadedImagePdf(
+        doc,
+        asset,
+        PAGE_MARGIN + column * (imageWidth + gap),
+        cursor.y,
+        imageWidth,
+        imageHeight,
+        false,
+      );
+    });
+
+    cursor.y += imageHeight + gap;
+  }
+
+  cursor.y += 8;
+};
+
+const addCustomMemoFormatSections = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  context: ExportContext,
+) => {
+  for (const sectionItem of context.formatSections) {
+    if (sectionItem.type === "field") {
+      if (!isHeaderOrSignatureField(sectionItem.field)) {
+        await addCustomMemoSingleField(doc, cursor, sectionItem, context);
+      }
+      continue;
+    }
+
+    await buildGenericPdfTableGroup(doc, cursor, sectionItem, context);
+  }
+};
+
+const addGenericEvidenceSection = async (
+  doc: jsPDF,
+  cursor: PdfCursor,
+  evidences: Evidence[],
+) => {
+  if (evidences.length === 0) return;
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  drawPdfAccentHeading(doc, cursor, `EVIDENCIAS (${evidences.length}):`, PAGE_MARGIN + 18);
+
+  for (const evidence of evidences) {
+    ensurePdfSpace(doc, cursor, 190);
+    const imageSource = getEvidenceImageSource(evidence);
+    const asset = imageSource ? await loadImageAsset(imageSource) : null;
+
+    if (asset) {
+      drawLoadedImagePdf(doc, asset, PAGE_MARGIN, cursor.y, 200, 150);
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(220, 38, 38);
+    doc.text(getEvidenceLabel(evidence), PAGE_MARGIN + 215, cursor.y + 14);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(51, 65, 85);
+    const comment = doc.splitTextToSize(
+      evidence.created_at
+        ? `Registrada el ${new Date(evidence.created_at).toLocaleString("es")}`
+        : "Sin detalle adicional",
+      pageWidth - PAGE_MARGIN * 2 - 220,
+    );
+    doc.text(comment, PAGE_MARGIN + 215, cursor.y + 32);
+    cursor.y += 170;
+  }
+};
+
+const exportCustomMemoToPDF = async (
+  inspection: Inspection,
+  evidences: Evidence[],
+  context: ExportContext,
+) => {
+  const payload = await buildNormalExportPayload(inspection, context);
+  const cornerLogoAsset = await loadCornerLogoAsset();
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const cursor: PdfCursor = { y: PAGE_MARGIN };
+
+  addNormalPdfHeader(doc, payload, cursor, cornerLogoAsset);
+  addNormalPdfIntro(doc, payload, cursor);
+  await addCustomMemoFormatSections(doc, cursor, context);
+
+  if (payload.finalItems.length > 0) {
+    cursor.y += 8;
+    drawPdfAccentHeading(doc, cursor, "CONCLUSIONES Y RECOMENDACIONES:", PAGE_MARGIN + 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    drawBulletListPdf(doc, cursor, payload.finalItems, {
+      x: PAGE_MARGIN + 24,
+      width: pageWidth - PAGE_MARGIN * 2 - 24,
+    });
+  }
+
+  if (!hasFormatImageValues(context)) {
+    await addGenericEvidenceSection(doc, cursor, evidences);
+  }
+
+  addNormalPdfSignatureTable(doc, payload, cursor);
+  addPdfPageNumbers(doc);
+
+  const fileName = `inspeccion-${inspection.inspection_date ?? "sf"}-${inspection.id.slice(0, 8)}.pdf`;
+  doc.save(fileName);
+};
+
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
 const exportGenericToPDF = async (
   inspection: Inspection,
   evidences: Evidence[],
@@ -3392,8 +3620,13 @@ export const exportToPDF = async (inspection: Inspection, evidences: Evidence[])
     return;
   }
 
+<<<<<<< HEAD
   if (hasTableLayoutSections(context)) {
     await exportTableLayoutToPDF(inspection, context);
+=======
+  if (hasTableLayoutSections(context) || context.formatSections.length > 0) {
+    await exportCustomMemoToPDF(inspection, evidences, context);
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     return;
   }
 

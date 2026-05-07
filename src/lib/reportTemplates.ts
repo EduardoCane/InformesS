@@ -1,6 +1,10 @@
 import { DEFAULT_CONTRACT_ICON_ID } from "./contractIcons";
 
+<<<<<<< HEAD
 export type ContractFieldType = "text" | "textarea" | "select" | "radio" | "image" | "date";
+=======
+export type ContractFieldType = "text" | "textarea" | "select" | "radio" | "image";
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
 export type RepeatableLayout = "blocks" | "table";
 
 export interface ContractFieldDefinition {
@@ -143,7 +147,11 @@ const normalizeField = (field: Partial<ContractFieldDefinition>): ContractFieldD
       ? "table"
       : "blocks"
     : undefined;
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
   // Para imageLayout: mantener el valor si es válido, sino asignar default para nuevos campos
   let imageLayout: "rows" | "grid3x3" | undefined;
   if (type === "image") {
@@ -485,6 +493,55 @@ export const createContractFormat = ({
   fields?: ContractFieldDefinition[];
 } = {}): ReportFormatDefinition =>
   createFormat(name, description, fields);
+
+const FORMAT_FIELD_SUFFIXES_TO_PRESERVE = [
+  "-initial-description",
+  "-final-conclusions",
+  "-production-date",
+  "-harness-line",
+  "-status-other",
+  "-recommendations",
+  "-observations",
+  "-responsable",
+  "-location",
+  "-position",
+  "-images",
+  "-status",
+  "-labor",
+  "-area",
+] as const;
+
+const getClonedFieldId = (fieldId: string) => {
+  const suffix =
+    FORMAT_FIELD_SUFFIXES_TO_PRESERVE.find((candidateSuffix) =>
+      fieldId.endsWith(candidateSuffix),
+    ) ?? "";
+
+  return `${uniqueId()}${suffix}`;
+};
+
+export const cloneContractFormat = (
+  sourceFormat: ReportFormatDefinition,
+  {
+    name = `${sourceFormat.name} copia`,
+    description = sourceFormat.description || getDefaultFormatDescription(),
+  }: {
+    name?: string;
+    description?: string;
+  } = {},
+): ReportFormatDefinition =>
+  createFormat(
+    name,
+    description,
+    sourceFormat.fields.map((field) => ({
+      ...field,
+      id: getClonedFieldId(field.id),
+      options: [...field.options],
+      repeatableGroup: field.repeatableGroup ?? null,
+      repeatableLayout: field.repeatableLayout,
+      imageLayout: field.imageLayout,
+    })),
+  );
 
 export const createContractField = (): ContractFieldDefinition =>
   normalizeField({
