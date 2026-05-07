@@ -59,10 +59,18 @@ export type Database = {
         Row: {
           accompanying_committee: string | null
           archived: boolean
+          archived_at: string | null
           area: string | null
           contract_type: string
           created_at: string
           dynamic_fields: Json
+          employer_address: string | null
+          employer_business_name: string | null
+          employer_economic_activity: string | null
+          employer_location: string | null
+          employer_ruc: string | null
+          employer_worker_count: string | null
+          format_id: string | null
           id: string
           inspection_date: string | null
           location: string | null
@@ -70,16 +78,27 @@ export type Database = {
           result: string | null
           specific_site: string | null
           status: string
+          subject: string | null
+          template_id: string | null
+          title: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           accompanying_committee?: string | null
           archived?: boolean
+          archived_at?: string | null
           area?: string | null
           contract_type: string
           created_at?: string
           dynamic_fields?: Json
+          employer_address?: string | null
+          employer_business_name?: string | null
+          employer_economic_activity?: string | null
+          employer_location?: string | null
+          employer_ruc?: string | null
+          employer_worker_count?: string | null
+          format_id?: string | null
           id?: string
           inspection_date?: string | null
           location?: string | null
@@ -87,16 +106,27 @@ export type Database = {
           result?: string | null
           specific_site?: string | null
           status?: string
+          subject?: string | null
+          template_id?: string | null
+          title?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           accompanying_committee?: string | null
           archived?: boolean
+          archived_at?: string | null
           area?: string | null
           contract_type?: string
           created_at?: string
           dynamic_fields?: Json
+          employer_address?: string | null
+          employer_business_name?: string | null
+          employer_economic_activity?: string | null
+          employer_location?: string | null
+          employer_ruc?: string | null
+          employer_worker_count?: string | null
+          format_id?: string | null
           id?: string
           inspection_date?: string | null
           location?: string | null
@@ -104,6 +134,9 @@ export type Database = {
           result?: string | null
           specific_site?: string | null
           status?: string
+          subject?: string | null
+          template_id?: string | null
+          title?: string | null
           updated_at?: string
           user_id?: string
         }

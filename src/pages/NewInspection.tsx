@@ -35,11 +35,13 @@ import {
 import {
   ContractTemplate,
   extractInspectionEvidenceEntries,
+  getRepeatableLayout,
   getRepeatableGroupLabel,
   ReportFormatDefinition,
   buildInspectionDynamicFields,
   createContractTemplateFromFormats,
 } from "@/lib/reportTemplates";
+import { getRichTextPlainText } from "@/lib/richText";
 import { checkTemplateUsageInInspections, fetchBaseReportFormats } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
@@ -89,6 +91,99 @@ const normalizeDynamicFieldArray = (value: DynamicFieldValue | undefined): (stri
   return [];
 };
 
+const isFilledDynamicValue = (value: DynamicFieldValue | string | string[] | undefined): boolean => {
+  if (Array.isArray(value)) {
+    return value.some((entry) => isFilledDynamicValue(entry));
+  }
+
+  return typeof value === "string" && getRichTextPlainText(value).trim().length > 0;
+};
+
+const normalizeChoiceText = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const isOtherChoice = (value: unknown) => normalizeChoiceText(value) === "otro";
+
+const hasOtherChoice = (field: ReportFormatDefinition["fields"][number]) =>
+  field.options.some((option) => isOtherChoice(option));
+
+const shouldShowOtherInput = (
+  field: ReportFormatDefinition["fields"][number],
+  value: unknown,
+) => field.type === "radio" && hasOtherChoice(field) && isOtherChoice(value);
+
+const isHiddenFormatField = (field: ReportFormatDefinition["fields"][number]) =>
+  field.isResultField || field.id.endsWith("-status-other");
+
+const areGeneralDataFieldsFilled = (generalData: {
+  title: string;
+  recipient_name: string;
+  recipient_title: string;
+  sender_name: string;
+  sender_title: string;
+  subject: string;
+  inspection_date: string;
+  employer_worker_count: string;
+}) =>
+  [
+    generalData.title,
+    generalData.recipient_name,
+    generalData.recipient_title,
+    generalData.sender_name,
+    generalData.sender_title,
+    generalData.subject,
+    generalData.inspection_date,
+    generalData.employer_worker_count,
+  ].every((value) => value.trim().length > 0);
+
+const areRequiredFormatFieldsFilled = (
+  format: ReportFormatDefinition,
+  values: Record<string, DynamicFieldValue>,
+) => {
+  const checkedGroups = new Set<string>();
+
+  for (const field of format.fields) {
+    if (isHiddenFormatField(field)) continue;
+
+    if (!field.repeatableGroup) {
+      if (field.required && !isFilledDynamicValue(values[field.id])) {
+        return false;
+      }
+      continue;
+    }
+
+    if (checkedGroups.has(field.repeatableGroup)) continue;
+    checkedGroups.add(field.repeatableGroup);
+
+    const groupFields = format.fields.filter(
+      (candidateField) =>
+        candidateField.repeatableGroup === field.repeatableGroup &&
+        !isHiddenFormatField(candidateField),
+    );
+    const blockCount = Math.max(
+      1,
+      ...groupFields.map((groupField) => normalizeDynamicFieldArray(values[groupField.id]).length),
+    );
+
+    for (let blockIndex = 0; blockIndex < blockCount; blockIndex += 1) {
+      for (const groupField of groupFields) {
+        if (!groupField.required) continue;
+
+        const blockValues = normalizeDynamicFieldArray(values[groupField.id]);
+        if (!isFilledDynamicValue(blockValues[blockIndex])) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+};
+
 const getRepeatableBlockValue = (blockIndex: number) => `block-${blockIndex}`;
 
 const getRepeatableBlockIndex = (value: string) => {
@@ -101,13 +196,10 @@ const getRepeatableBlockIndex = (value: string) => {
 const countFilledDynamicValues = (values: Record<string, DynamicFieldValue>) =>
   Object.values(values).reduce((filledCount, value) => {
     if (Array.isArray(value)) {
-      return (
-        filledCount +
-        value.filter((entry) => typeof entry === "string" && entry.trim()).length
-      );
+      return filledCount + value.filter((entry) => isFilledDynamicValue(entry)).length;
     }
 
-    return typeof value === "string" && value.trim() ? filledCount + 1 : filledCount;
+    return isFilledDynamicValue(value) ? filledCount + 1 : filledCount;
   }, 0);
 
 const getErrorMessage = (error: unknown) => {
@@ -207,6 +299,12 @@ const NewInspection = () => {
     sender_title: "",
     subject: "",
     inspection_date: getLocalDateInputValue(),
+    employer_business_name: "Agualima SAC",
+    employer_ruc: "20512217452",
+    employer_address: "carretera panamericana norte km 512",
+    employer_location: "Virú, Virú, La libertad",
+    employer_economic_activity: "Agroindustria",
+    employer_worker_count: "",
   });
   const [dynamicFields, setDynamicFields] = useState<Record<string, DynamicFieldValue>>({});
 
@@ -310,33 +408,32 @@ const NewInspection = () => {
   }, [editingContractSelectedType, editingContractTypeOptions, editingTemplate]);
 
   useEffect(() => {
-    setDynamicFields({});
-  }, [selectedFormatId]);
+    if (!selectedFormat) {
+      setDynamicFields({});
+      return;
+    }
+
+    // Inicializar campos, previniendo campos de fecha con la fecha actual
+    const initialValues: Record<string, DynamicFieldValue> = {};
+    const today = new Date();
+    const formattedDate = today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+
+    selectedFormat.fields.forEach((field) => {
+      if (field.type === "date") {
+        initialValues[field.id] = formattedDate;
+      }
+    });
+
+    setDynamicFields(initialValues);
+  }, [selectedFormatId, selectedFormat]);
 
   const canNext = () => {
     if (step === 1) return Boolean(selectedTemplate && selectedFormat);
     if (step === 2) {
-      return Boolean(
-        generalData.title &&
-          generalData.recipient_name &&
-          generalData.recipient_title &&
-          generalData.sender_name &&
-          generalData.sender_title &&
-          generalData.subject &&
-          generalData.inspection_date,
-      );
+      return areGeneralDataFieldsFilled(generalData);
     }
     if (step === 3 && selectedFormat) {
-      return selectedFormat.fields.every((field) => {
-        if (!field.required) return true;
-
-        const value = dynamicFields[field.id];
-        if (Array.isArray(value)) {
-          return value.some((entry) => typeof entry === "string" && entry.trim());
-        }
-
-        return Boolean(value?.trim());
-      });
+      return areRequiredFormatFieldsFilled(selectedFormat, dynamicFields);
     }
 
     return true;
@@ -548,6 +645,12 @@ const NewInspection = () => {
         title: generalData.title,
         inspection_date: generalData.inspection_date,
         subject: generalData.subject,
+        employer_business_name: generalData.employer_business_name,
+        employer_ruc: generalData.employer_ruc,
+        employer_address: generalData.employer_address,
+        employer_location: generalData.employer_location,
+        employer_economic_activity: generalData.employer_economic_activity,
+        employer_worker_count: generalData.employer_worker_count,
         dynamic_fields: inspectionDynamicFields as unknown as any,
         status: "completed",
       })
@@ -1007,6 +1110,12 @@ const Step2 = ({
     sender_title: string;
     subject: string;
     inspection_date: string;
+    employer_business_name: string;
+    employer_ruc: string;
+    employer_address: string;
+    employer_location: string;
+    employer_economic_activity: string;
+    employer_worker_count: string;
   };
   setData: React.Dispatch<
     React.SetStateAction<{
@@ -1017,6 +1126,12 @@ const Step2 = ({
       sender_title: string;
       subject: string;
       inspection_date: string;
+      employer_business_name: string;
+      employer_ruc: string;
+      employer_address: string;
+      employer_location: string;
+      employer_economic_activity: string;
+      employer_worker_count: string;
     }>
   >;
 }) => (
@@ -1101,6 +1216,18 @@ const Step2 = ({
             value={data.subject}
             onChange={(event) => setData({ ...data, subject: event.target.value })}
             placeholder="Ej. Inspeccion de los Arnes en AGUALIMA"
+          />
+        </Field>
+      </div>
+
+      <div className="md:col-span-2">
+        <Field label="Número de trabajadores en el centro laboral *">
+          <Input
+            type="number"
+            value={data.employer_worker_count}
+            onChange={(event) => setData({ ...data, employer_worker_count: event.target.value })}
+            placeholder="Ej. 150"
+            min="0"
           />
         </Field>
       </div>
@@ -1323,6 +1450,19 @@ const Step3 = ({
         />
       )}
 
+      {field.type === "date" && (
+        <Input
+          type="date"
+          value={typeof values[field.id] === "string" ? (values[field.id] as string) : ""}
+          onChange={(event) =>
+            setValues((currentValues) => ({
+              ...currentValues,
+              [field.id]: event.target.value,
+            }))
+          }
+        />
+      )}
+
       {field.type === "textarea" && (
         <RichTextEditor
           value={typeof values[field.id] === "string" ? (values[field.id] as string) : ""}
@@ -1379,6 +1519,19 @@ const Step3 = ({
             </div>
           ))}
         </RadioGroup>
+      )}
+
+      {shouldShowOtherInput(field, values[field.id]) && (
+        <Input
+          placeholder="Especificar..."
+          value={typeof values[`${field.id}-otro`] === "string" ? (values[`${field.id}-otro`] as string) : ""}
+          onChange={(event) =>
+            setValues((currentValues) => ({
+              ...currentValues,
+              [`${field.id}-otro`]: event.target.value,
+            }))
+          }
+        />
       )}
 
       {field.type === "image" && (
@@ -1450,6 +1603,313 @@ const Step3 = ({
     </Field>
   );
 
+  const renderRepeatableFieldControl = (
+    groupField: ReportFormatDefinition["fields"][number],
+    blockIndex: number,
+    currentValue: string | string[],
+    emptyImageText = "Aun no se han cargado imagenes para esta fila.",
+  ) => (
+    <>
+      {groupField.type === "text" && (
+        <Input
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onChange={(event) =>
+            handleRepeatableFieldChange(
+              groupField.id,
+              blockIndex,
+              event.target.value,
+            )
+          }
+        />
+      )}
+
+      {groupField.type === "date" && (
+        <Input
+          type="date"
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onChange={(event) =>
+            handleRepeatableFieldChange(
+              groupField.id,
+              blockIndex,
+              event.target.value,
+            )
+          }
+        />
+      )}
+
+      {groupField.type === "textarea" && (
+        <RichTextEditor
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onChange={(nextValue) =>
+            handleRepeatableFieldChange(
+              groupField.id,
+              blockIndex,
+              nextValue,
+            )
+          }
+          minHeightClassName="min-h-[120px]"
+        />
+      )}
+
+      {groupField.type === "select" && (
+        <Select
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onValueChange={(value) =>
+            handleRepeatableFieldChange(groupField.id, blockIndex, value)
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecciona una opcion" />
+          </SelectTrigger>
+          <SelectContent>
+            {groupField.options.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {groupField.type === "radio" && (
+        <RadioGroup
+          value={typeof currentValue === "string" ? currentValue : ""}
+          onValueChange={(value) =>
+            handleRepeatableFieldChange(groupField.id, blockIndex, value)
+          }
+          className="flex flex-wrap gap-4"
+        >
+          {groupField.options.map((option) => (
+            <div key={option} className="flex items-center gap-2">
+              <RadioGroupItem
+                value={option}
+                id={`${groupField.id}-${blockIndex}-${option}`}
+              />
+              <Label
+                htmlFor={`${groupField.id}-${blockIndex}-${option}`}
+                className="font-normal"
+              >
+                {option}
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
+      )}
+
+      {shouldShowOtherInput(groupField, currentValue) && (
+        <Input
+          placeholder="Especificar..."
+          value={typeof values[`${groupField.id}-otro-${blockIndex}`] === "string" ? (values[`${groupField.id}-otro-${blockIndex}`] as string) : ""}
+          onChange={(event) =>
+            setValues((currentValues) => ({
+              ...currentValues,
+              [`${groupField.id}-otro-${blockIndex}`]: event.target.value,
+            }))
+          }
+        />
+      )}
+
+      {groupField.type === "image" && (
+        <div className="space-y-3">
+          <label
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border p-4 text-center transition-colors hover:border-primary hover:bg-accent/30"
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.add("border-primary", "bg-accent/30");
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.remove("border-primary", "bg-accent/30");
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              event.currentTarget.classList.remove("border-primary", "bg-accent/30");
+              void handleImageFieldChange(
+                groupField.id,
+                event.dataTransfer.files,
+                blockIndex,
+              );
+            }}
+          >
+            <ImageIcon className="h-5 w-5 text-muted-foreground" />
+            <p className="text-sm font-medium">Subir imagenes</p>
+            <p className="text-xs text-muted-foreground">
+              PNG o JPG - Puedes seleccionar varias o arrastra aqui
+            </p>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                void handleImageFieldChange(
+                  groupField.id,
+                  event.target.files,
+                  blockIndex,
+                );
+                event.target.value = "";
+              }}
+            />
+          </label>
+
+          {Array.isArray(currentValue) && currentValue.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {currentValue.map((imageDataUrl, imageIndex) => (
+                <div
+                  key={imageIndex}
+                  className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted"
+                >
+                  <img
+                    src={imageDataUrl}
+                    alt={`${groupField.label} ${imageIndex + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const images = currentValue.filter(
+                        (entry): entry is string => typeof entry === "string",
+                      );
+                      const updated = images.filter((_, index) => index !== imageIndex);
+                      handleRepeatableFieldChange(
+                        groupField.id,
+                        blockIndex,
+                        updated,
+                      );
+                    }}
+                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    <X className="h-5 w-5 text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">{emptyImageText}</p>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const renderTableGroup = (
+    groupKey: string,
+    groupFields: ReportFormatDefinition["fields"],
+    blockCount: number,
+  ) => {
+    const nonImageFields = groupFields.filter((groupField) => groupField.type !== "image");
+    const locationField =
+      nonImageFields.find((groupField) =>
+        groupField.label.toLowerCase().includes("ubic"),
+      ) ??
+      nonImageFields[0] ??
+      groupFields[0];
+    const statusFields = groupFields.filter((groupField) => groupField.id !== locationField?.id);
+
+    return (
+      <div key={groupKey} className="space-y-4 rounded-xl border border-border bg-muted/10 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">{getRepeatableGroupLabel(groupKey)}</h3>
+            <p className="text-xs text-muted-foreground">
+              Agrega filas para registrar ubicacion, estado e imagenes en formato de cuadro.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handleAddBlock(groupKey, groupFields)}
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Agregar fila
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
+            <thead>
+              <tr className="bg-[#fbbf24] text-black">
+                <th className="w-16 border border-border px-3 py-2 text-center font-semibold">
+                  Nº
+                </th>
+                <th className="w-56 border border-border px-3 py-2 text-center font-semibold uppercase">
+                  {locationField?.label ?? "Ubicacion"}
+                </th>
+                <th className="border border-border px-3 py-2 text-center font-semibold uppercase">
+                  Estado
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: blockCount }, (_, blockIndex) => {
+                const locationValue = locationField
+                  ? normalizeDynamicFieldArray(values[locationField.id])[blockIndex] ?? ""
+                  : "";
+
+                return (
+                  <tr key={`${groupKey}-row-${blockIndex}`} className="align-top">
+                    <td className="border border-border px-3 py-4 text-center font-medium">
+                      {String(blockIndex + 1).padStart(2, "0")}
+                    </td>
+                    <td className="border border-border px-3 py-4">
+                      {locationField ? (
+                        renderRepeatableFieldControl(locationField, blockIndex, locationValue)
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="border border-border px-3 py-4">
+                      <div className="space-y-4">
+                        {statusFields.length > 0 ? (
+                          statusFields.map((statusField) => {
+                            const blockValues = normalizeDynamicFieldArray(values[statusField.id]);
+                            const currentValue = blockValues[blockIndex] ?? "";
+
+                            return (
+                              <div key={`${statusField.id}-${blockIndex}`} className="space-y-1.5">
+                                <Label className="text-xs">
+                                  {statusField.label}
+                                  {statusField.required ? " *" : ""}
+                                </Label>
+                                {renderRepeatableFieldControl(
+                                  statusField,
+                                  blockIndex,
+                                  currentValue,
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <span className="text-muted-foreground">Sin campos de estado.</span>
+                        )}
+
+                        {blockCount > 1 && (
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleRemoveBlock(groupKey, groupFields, blockIndex)}
+                            >
+                              <Trash2 className="mr-1.5 h-4 w-4" />
+                              Eliminar fila
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -1485,7 +1945,7 @@ const Step3 = ({
                 const elements = [renderSingleField(field)];
                 
                 // Si es un campo de estado/status y el valor es "Otro", mostrar campo adicional
-                if (field.id.endsWith("-status") && values[field.id] === "Otro") {
+                if (field.id.endsWith("-status") && isOtherChoice(values[field.id])) {
                   const otherField = format.fields.find(f => f.id === field.id.replace("-status", "-status-other"));
                   if (otherField) {
                     elements.push(renderSingleField(otherField));
@@ -1506,6 +1966,10 @@ const Step3 = ({
                 1,
                 ...groupFields.map((groupField) => normalizeDynamicFieldArray(values[groupField.id]).length),
               );
+
+              if (getRepeatableLayout(groupFields) === "table") {
+                return renderTableGroup(groupKey, groupFields, blockCount);
+              }
 
               return (
                 <div key={groupKey} className="space-y-4 rounded-xl border border-border bg-muted/10 p-4">
@@ -1595,6 +2059,20 @@ const Step3 = ({
                                     />
                                   )}
 
+                                  {groupField.type === "date" && (
+                                    <Input
+                                      type="date"
+                                      value={currentValue}
+                                      onChange={(event) =>
+                                        handleRepeatableFieldChange(
+                                          groupField.id,
+                                          blockIndex,
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  )}
+
                                   {groupField.type === "textarea" && (
                                     <RichTextEditor
                                       value={typeof currentValue === "string" ? currentValue : ""}
@@ -1654,6 +2132,19 @@ const Step3 = ({
                                     </RadioGroup>
                                   )}
 
+                                  {shouldShowOtherInput(groupField, currentValue) && (
+                                    <Input
+                                      placeholder="Especificar..."
+                                      value={typeof values[`${groupField.id}-otro-${blockIndex}`] === "string" ? (values[`${groupField.id}-otro-${blockIndex}`] as string) : ""}
+                                      onChange={(event) =>
+                                        setValues((currentValues) => ({
+                                          ...currentValues,
+                                          [`${groupField.id}-otro-${blockIndex}`]: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                  )}
+
                                   {groupField.type === "image" && (
                                     <div className="space-y-3">
                                       <label 
@@ -1707,7 +2198,11 @@ const Step3 = ({
                                               <button
                                                 type="button"
                                                 onClick={() => {
-                                                  const images = normalizeDynamicFieldArray(currentValue);
+                                                  const images = Array.isArray(currentValue)
+                                                    ? currentValue.filter(
+                                                        (entry): entry is string => typeof entry === "string",
+                                                      )
+                                                    : [];
                                                   const updated = images.filter((_, i) => i !== imageIndex);
                                                   handleRepeatableFieldChange(
                                                     groupField.id,
@@ -1763,6 +2258,12 @@ const Step4Summary = ({
     sender_title: string;
     subject: string;
     inspection_date: string;
+    employer_business_name: string;
+    employer_ruc: string;
+    employer_address: string;
+    employer_location: string;
+    employer_economic_activity: string;
+    employer_worker_count: string;
   };
   dynamicFields: Record<string, DynamicFieldValue>;
 }) => (
@@ -1784,6 +2285,12 @@ const Step4Summary = ({
       <SummaryRow label="DE (Cargo)" value={generalData.sender_title || "-"} />
       <SummaryRow label="Asunto" value={generalData.subject || "-"} />
       <SummaryRow label="Fecha" value={generalData.inspection_date || "-"} />
+      <SummaryRow label="Razón Social" value={generalData.employer_business_name || "-"} />
+      <SummaryRow label="RUC" value={generalData.employer_ruc || "-"} />
+      <SummaryRow label="Dirección" value={generalData.employer_address || "-"} />
+      <SummaryRow label="Distrito/Provincia/Departamento" value={generalData.employer_location || "-"} />
+      <SummaryRow label="Actividad económica" value={generalData.employer_economic_activity || "-"} />
+      <SummaryRow label="Número de trabajadores" value={generalData.employer_worker_count || "-"} />
       <SummaryRow
         label="Campos completados"
         value={`${countFilledDynamicValues(dynamicFields)}`}

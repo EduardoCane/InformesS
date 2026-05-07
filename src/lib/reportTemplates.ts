@@ -1,6 +1,7 @@
 import { DEFAULT_CONTRACT_ICON_ID } from "./contractIcons";
 
-export type ContractFieldType = "text" | "textarea" | "select" | "radio" | "image";
+export type ContractFieldType = "text" | "textarea" | "select" | "radio" | "image" | "date";
+export type RepeatableLayout = "blocks" | "table";
 
 export interface ContractFieldDefinition {
   id: string;
@@ -10,6 +11,8 @@ export interface ContractFieldDefinition {
   required: boolean;
   isResultField: boolean;
   repeatableGroup?: string | null;
+  repeatableLayout?: RepeatableLayout;
+  imageLayout?: "rows" | "grid3x3";
 }
 
 export interface ReportFormatDefinition {
@@ -66,10 +69,18 @@ export type InspectionFormatSection =
     };
 
 export const DEFAULT_REPEATABLE_GROUP_KEY = "activity-block";
+export const DEFAULT_REPEATABLE_TABLE_GROUP_KEY = "Cuadro de inspeccion";
 export const getRepeatableGroupLabel = (groupKey: string | null | undefined) =>
   !groupKey || groupKey === DEFAULT_REPEATABLE_GROUP_KEY
     ? "Bloques del documento"
+    : groupKey === DEFAULT_REPEATABLE_TABLE_GROUP_KEY
+      ? "Cuadro de inspeccion"
     : groupKey;
+
+export const getRepeatableLayout = (
+  fields: Pick<ContractFieldDefinition, "repeatableLayout">[],
+): RepeatableLayout =>
+  fields.some((field) => field.repeatableLayout === "table") ? "table" : "blocks";
 
 const STORAGE_KEY = "inspectpro.contract-templates.v2";
 
@@ -119,13 +130,31 @@ const normalizeField = (field: Partial<ContractFieldDefinition>): ContractFieldD
     field.type === "textarea" ||
     field.type === "select" ||
     field.type === "radio" ||
-    field.type === "image"
+    field.type === "image" ||
+    field.type === "date"
       ? field.type
       : "text";
   const repeatableGroup =
     typeof field.repeatableGroup === "string" && field.repeatableGroup.trim()
       ? field.repeatableGroup.trim()
       : null;
+  const repeatableLayout: RepeatableLayout | undefined = repeatableGroup
+    ? field.repeatableLayout === "table"
+      ? "table"
+      : "blocks"
+    : undefined;
+
+  // Para imageLayout: mantener el valor si es válido, sino asignar default para nuevos campos
+  let imageLayout: "rows" | "grid3x3" | undefined;
+  if (type === "image") {
+    if (field.imageLayout === "rows" || field.imageLayout === "grid3x3") {
+      imageLayout = field.imageLayout;
+    } else if (field.imageLayout === undefined) {
+      // Solo asignar default si NO viene de la base de datos (cuando es undefined)
+      // Si viene de la BD, normalizeField será llamado después del mapeo que ya incluye imageLayout
+      imageLayout = "grid3x3";
+    }
+  }
 
   return {
     id: typeof field.id === "string" && field.id.trim() ? field.id : uniqueId(),
@@ -138,6 +167,8 @@ const normalizeField = (field: Partial<ContractFieldDefinition>): ContractFieldD
     required: Boolean(field.required),
     isResultField: repeatableGroup || type === "image" ? false : Boolean(field.isResultField),
     repeatableGroup,
+    repeatableLayout,
+    imageLayout,
   };
 };
 
@@ -461,6 +492,40 @@ export const createContractField = (): ContractFieldDefinition =>
     type: "text",
   });
 
+export const createContractTableFields = (
+  groupName = DEFAULT_REPEATABLE_TABLE_GROUP_KEY,
+): ContractFieldDefinition[] => {
+  const prefix = uniqueId();
+  const repeatableGroup = groupName.trim() || DEFAULT_REPEATABLE_TABLE_GROUP_KEY;
+
+  return [
+    normalizeField({
+      id: `${prefix}-location`,
+      label: "Ubicacion",
+      type: "text",
+      required: true,
+      repeatableGroup,
+      repeatableLayout: "table",
+    }),
+    normalizeField({
+      id: `${prefix}-status`,
+      label: "Estado",
+      type: "textarea",
+      required: true,
+      repeatableGroup,
+      repeatableLayout: "table",
+    }),
+    normalizeField({
+      id: `${prefix}-images`,
+      label: "Imagenes",
+      type: "image",
+      repeatableGroup,
+      repeatableLayout: "table",
+      imageLayout: "rows",
+    }),
+  ];
+};
+
 export const createContractTemplateFromFormats = ({
   name = "Nuevo contrato",
   description = "",
@@ -490,6 +555,8 @@ export const createContractTemplateFromFormats = ({
         required: field.required,
         isResultField: field.isResultField,
         repeatableGroup: field.repeatableGroup ?? null,
+        repeatableLayout: field.repeatableLayout,
+        imageLayout: field.imageLayout,
       })),
     })),
   });
@@ -528,6 +595,91 @@ export const saveContractTemplates = (templates: ContractTemplate[]) => {
 
 export const getContractTemplateStorageKey = () => STORAGE_KEY;
 
+const normalizeChoiceText = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const isOtherChoice = (value: unknown) => normalizeChoiceText(value) === "otro";
+
+const readTextValue = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeSaveRepeatableValues = (value: unknown): unknown[] => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string" && value) return [value];
+  return [];
+};
+
+const findCompanionOtherField = (
+  field: ContractFieldDefinition,
+  fields: ContractFieldDefinition[],
+) => {
+  const companionIds = [
+    `${field.id}-other`,
+    `${field.id}-otro`,
+    field.id.endsWith("-status")
+      ? `${field.id.slice(0, -"-status".length)}-status-other`
+      : "",
+  ].filter(Boolean);
+
+  return fields.find((candidateField) => companionIds.includes(candidateField.id));
+};
+
+const readOtherFieldText = (
+  field: ContractFieldDefinition,
+  fields: ContractFieldDefinition[],
+  values: Record<string, unknown>,
+  blockIndex?: number,
+) => {
+  const inlineOtherKey =
+    typeof blockIndex === "number"
+      ? `${field.id}-otro-${blockIndex}`
+      : `${field.id}-otro`;
+  const inlineOtherValue = readTextValue(values[inlineOtherKey]);
+
+  if (inlineOtherValue) return inlineOtherValue;
+
+  const companionField = findCompanionOtherField(field, fields);
+  if (!companionField) return "";
+
+  if (typeof blockIndex === "number") {
+    return readTextValue(
+      normalizeSaveRepeatableValues(values[companionField.id])[blockIndex],
+    );
+  }
+
+  return readTextValue(values[companionField.id]);
+};
+
+const resolveOtherChoiceValue = (
+  field: ContractFieldDefinition,
+  fields: ContractFieldDefinition[],
+  values: Record<string, unknown>,
+) => {
+  const rawValue = values[field.id] ?? "";
+
+  if (field.type !== "radio" && field.type !== "select") {
+    return rawValue;
+  }
+
+  if (!field.repeatableGroup) {
+    if (!isOtherChoice(rawValue)) return rawValue;
+    return readOtherFieldText(field, fields, values) || rawValue;
+  }
+
+  if (!Array.isArray(rawValue) && !(typeof rawValue === "string" && rawValue)) {
+    return rawValue;
+  }
+
+  return normalizeSaveRepeatableValues(rawValue).map((entry, blockIndex) => {
+    if (!isOtherChoice(entry)) return entry;
+    return readOtherFieldText(field, fields, values, blockIndex) || entry;
+  });
+};
+
 export const buildInspectionDynamicFields = (
   template: ContractTemplate,
   format: ReportFormatDefinition,
@@ -547,11 +699,13 @@ export const buildInspectionDynamicFields = (
       required: field.required,
       isResultField: field.isResultField,
       repeatableGroup: field.repeatableGroup ?? null,
+      repeatableLayout: field.repeatableLayout,
+      imageLayout: field.imageLayout,
     })),
   };
 
   format.fields.forEach((field) => {
-    payload[field.id] = values[field.id] ?? "";
+    payload[field.id] = resolveOtherChoiceValue(field, format.fields, values);
   });
 
   return payload;

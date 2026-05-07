@@ -13,7 +13,7 @@ export const contractLabel = (value: string): string =>
 export interface DynamicField {
   key: string;
   label: string;
-  type: "text" | "textarea" | "select" | "radio";
+  type: "text" | "textarea" | "select" | "radio" | "date";
   options?: string[];
   required?: boolean;
 }
@@ -23,6 +23,7 @@ export const DYNAMIC_FIELDS_BY_CONTRACT: Record<ContractType, DynamicField[]> = 
     { key: "service_scope", label: "Alcance del servicio", type: "text" },
     { key: "service_quality", label: "Calidad observada", type: "select", options: ["Excelente", "Aceptable", "Deficiente"] },
     { key: "risk_level", label: "Nivel de riesgo", type: "select", options: ["Bajo", "Medio", "Alto", "Crítico"] },
+    { key: "service_date", label: "Fecha de servicio", type: "date" },
     { key: "observations", label: "Observaciones", type: "textarea" },
     { key: "compliance", label: "Cumplimiento", type: "radio", options: ["Cumple", "No cumple"] },
   ],
@@ -30,6 +31,7 @@ export const DYNAMIC_FIELDS_BY_CONTRACT: Record<ContractType, DynamicField[]> = 
     { key: "construction_phase", label: "Fase de obra", type: "select", options: ["Cimentación", "Estructura", "Acabados", "Entrega"] },
     { key: "safety_equipment", label: "Equipo de seguridad presente", type: "select", options: ["Completo", "Parcial", "Ausente"] },
     { key: "risk_level", label: "Nivel de riesgo", type: "select", options: ["Bajo", "Medio", "Alto", "Crítico"] },
+    { key: "inspection_date", label: "Fecha de inspección", type: "date" },
     { key: "observations", label: "Observaciones", type: "textarea" },
     { key: "compliance", label: "Cumplimiento", type: "radio", options: ["Cumple", "No cumple"] },
   ],
@@ -37,6 +39,7 @@ export const DYNAMIC_FIELDS_BY_CONTRACT: Record<ContractType, DynamicField[]> = 
     { key: "maintenance_type", label: "Tipo de mantenimiento", type: "select", options: ["Preventivo", "Correctivo", "Predictivo"] },
     { key: "equipment", label: "Equipo intervenido", type: "text" },
     { key: "risk_level", label: "Nivel de riesgo", type: "select", options: ["Bajo", "Medio", "Alto", "Crítico"] },
+    { key: "maintenance_date", label: "Fecha de mantenimiento", type: "date" },
     { key: "observations", label: "Observaciones", type: "textarea" },
     { key: "compliance", label: "Cumplimiento", type: "radio", options: ["Cumple", "No cumple"] },
   ],
@@ -44,6 +47,7 @@ export const DYNAMIC_FIELDS_BY_CONTRACT: Record<ContractType, DynamicField[]> = 
     { key: "field_1", label: "Campo específico 1", type: "text" },
     { key: "field_2", label: "Campo específico 2", type: "text" },
     { key: "risk_level", label: "Nivel de riesgo", type: "select", options: ["Bajo", "Medio", "Alto", "Crítico"] },
+    { key: "custom_date", label: "Fecha personalizada", type: "date" },
     { key: "observations", label: "Observaciones", type: "textarea" },
     { key: "compliance", label: "Cumplimiento", type: "radio", options: ["Cumple", "No cumple"] },
   ],

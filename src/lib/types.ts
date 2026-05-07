@@ -14,6 +14,12 @@ export interface Inspection {
   sender_name?: string | null;
   sender_title?: string | null;
   subject?: string | null;
+  employer_business_name?: string | null;
+  employer_ruc?: string | null;
+  employer_address?: string | null;
+  employer_location?: string | null;
+  employer_economic_activity?: string | null;
+  employer_worker_count?: string | null;
   personnel_in_charge: string | null;
   accompanying_committee: string | null;
   dynamic_fields: Record<string, unknown>;
