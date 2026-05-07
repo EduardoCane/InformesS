@@ -98,13 +98,10 @@ type CompletoExportBlock = {
   observations: string;
   images: string[];
   imageLayout?: "rows" | "grid3x3";
-<<<<<<< HEAD
   allEntries: Array<{
     field: ContractFieldDefinition;
     value: unknown;
   }>;
-=======
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
 };
 
 type CompletoExportPayload = {
@@ -974,10 +971,7 @@ const buildCompletoExportPayload = async (
       observations: findBlockTextValue(block, COMPLETO_FIELD_MATCHERS.observations),
       images: findBlockImages(block),
       imageLayout: findBlockImageLayout(block),
-<<<<<<< HEAD
       allEntries: block.entries,
-=======
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     }));
   });
 
@@ -1493,19 +1487,18 @@ const addNormalPdfPhotoPages = async (
   for (const imageChunk of chunkArray(imageAssets, capacity)) {
     doc.addPage();
     addPdfBadge(doc, contractName, cornerLogoAsset);
-<<<<<<< HEAD
+
 
     const slots = isGrid3x3
       ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length).slots
       : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
 
-=======
+
     
     const slots = isGrid3x3 
       ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length).slots
       : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
     
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     const preparedAssets = await Promise.all(
       imageChunk.map((asset, index) =>
         prepareImageAssetForFrame(asset, slots[index].width, slots[index].height, {
@@ -1640,23 +1633,19 @@ const addCompletoPhotoPages = async (
   for (const imageChunk of chunkArray(imageAssets, capacity)) {
     doc.addPage();
     addPdfBadge(doc, contractName, cornerLogoAsset);
-<<<<<<< HEAD
+
 
     const slots = isGrid3x3
-=======
+
     
     const slots = isGrid3x3 
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
+
       ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
           topY: 110,
           availableHeight: 620,
         }).slots
       : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
-<<<<<<< HEAD
 
-=======
-    
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     const preparedAssets = await Promise.all(
       imageChunk.map((asset, index) =>
         prepareImageAssetForFrame(asset, slots[index].width, slots[index].height, {
@@ -1808,38 +1797,30 @@ const exportCompletoToPDF = async (
     if (imageAssets.length > 0) {
       const isGrid3x3 = block.imageLayout === "grid3x3";
       const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
-<<<<<<< HEAD
 
-=======
-      
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       for (const imageChunk of chunkArray(imageAssets, capacity)) {
         const galleryLayout = isGrid3x3
           ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length)
           : { slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length), totalHeight: imageChunk.length * 200 };
-<<<<<<< HEAD
 
-=======
-        
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
         ensurePdfSpace(doc, cursor, galleryLayout.totalHeight + 16);
         const { slots, totalHeight } = isGrid3x3
           ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
               topY: cursor.y,
             })
-<<<<<<< HEAD
+
           : {
               slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length),
               totalHeight: imageChunk.length * 200
             };
 
-=======
+
           : { 
               slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length),
               totalHeight: imageChunk.length * 200
             };
         
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
+
         const preparedAssets = await Promise.all(
           imageChunk.map((asset, idx) =>
             prepareImageAssetForFrame(asset, slots[idx].width, slots[idx].height, {
@@ -1863,11 +1844,7 @@ const exportCompletoToPDF = async (
     if (block.index < 0 && imageAssets.length > 0) {
       const isGrid3x3 = block.imageLayout === "grid3x3";
       const capacity = isGrid3x3 ? PHOTO_PAGE_CAPACITY_COMPLETO : PHOTO_PAGE_CAPACITY;
-<<<<<<< HEAD
 
-=======
-      
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       for (const imageChunk of chunkArray(imageAssets, capacity)) {
         const { slots } = isGrid3x3
           ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length)
@@ -2244,8 +2221,6 @@ const addReportPdfTableSections = async (
   }
 };
 
-<<<<<<< HEAD
-=======
 const isHeaderOrSignatureField = (field: ContractFieldDefinition) =>
   [
     NORMAL_FIELD_MATCHERS.initialDescription,
@@ -2428,7 +2403,6 @@ const exportCustomMemoToPDF = async (
   doc.save(fileName);
 };
 
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
 const exportGenericToPDF = async (
   inspection: Inspection,
   evidences: Evidence[],
