@@ -11,10 +11,8 @@ import {
   ContractTemplate,
   DEFAULT_REPEATABLE_GROUP_KEY,
   DEFAULT_REPEATABLE_TABLE_GROUP_KEY,
-<<<<<<< HEAD
-=======
+
   cloneContractFormat,
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
   createContractField,
   createContractFormat,
   getRepeatableGroupLabel,
