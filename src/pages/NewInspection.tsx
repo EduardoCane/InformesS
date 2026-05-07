@@ -1622,8 +1622,6 @@ const Step3 = ({
           }
         />
       )}
-
-<<<<<<< HEAD
       {groupField.type === "date" && (
         <Input
           type="date"
@@ -1638,8 +1636,6 @@ const Step3 = ({
         />
       )}
 
-=======
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
       {groupField.type === "textarea" && (
         <RichTextEditor
           value={typeof currentValue === "string" ? currentValue : ""}
