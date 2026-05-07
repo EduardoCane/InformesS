@@ -3619,14 +3619,11 @@ export const exportToPDF = async (inspection: Inspection, evidences: Evidence[])
     await exportCompletoToPDF(inspection, context);
     return;
   }
-
-<<<<<<< HEAD
   if (hasTableLayoutSections(context)) {
     await exportTableLayoutToPDF(inspection, context);
-=======
+
   if (hasTableLayoutSections(context) || context.formatSections.length > 0) {
     await exportCustomMemoToPDF(inspection, evidences, context);
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
     return;
   }
 
