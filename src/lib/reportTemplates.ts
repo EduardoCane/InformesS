@@ -1,10 +1,7 @@
 import { DEFAULT_CONTRACT_ICON_ID } from "./contractIcons";
 
-<<<<<<< HEAD
 export type ContractFieldType = "text" | "textarea" | "select" | "radio" | "image" | "date";
-=======
 export type ContractFieldType = "text" | "textarea" | "select" | "radio" | "image";
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
 export type RepeatableLayout = "blocks" | "table";
 
 export interface ContractFieldDefinition {
@@ -147,11 +144,7 @@ const normalizeField = (field: Partial<ContractFieldDefinition>): ContractFieldD
       ? "table"
       : "blocks"
     : undefined;
-<<<<<<< HEAD
 
-=======
-  
->>>>>>> 3f44fff13d82fee270a94027d31410cc709d2101
   // Para imageLayout: mantener el valor si es válido, sino asignar default para nuevos campos
   let imageLayout: "rows" | "grid3x3" | undefined;
   if (type === "image") {
