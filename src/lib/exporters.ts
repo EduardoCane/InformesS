@@ -3588,6 +3588,7 @@ export const exportToPDF = async (inspection: Inspection, evidences: Evidence[])
   }
 
   await exportGenericToPDF(inspection, evidences, context);
+    }
 
 export const exportToDOCX = async (inspection: Inspection, evidences: Evidence[]) => {
   const context = getExportContext(inspection);
