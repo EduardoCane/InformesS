@@ -1492,12 +1492,6 @@ const addNormalPdfPhotoPages = async (
     const slots = isGrid3x3
       ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length).slots
       : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
-
-
-    
-    const slots = isGrid3x3 
-      ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length).slots
-      : buildPdfPhotoGallerySlots(pageWidth, imageChunk.length);
     
     const preparedAssets = await Promise.all(
       imageChunk.map((asset, index) =>
@@ -1636,9 +1630,6 @@ const addCompletoPhotoPages = async (
 
 
     const slots = isGrid3x3
-
-    
-    const slots = isGrid3x3 
 
       ? buildPdfPhotoGallerySlotsCompleto(pageWidth, imageChunk.length, {
           topY: 110,
