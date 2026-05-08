@@ -1805,11 +1805,6 @@ const exportCompletoToPDF = async (
               totalHeight: imageChunk.length * 200
             };
 
-
-          : { 
-              slots: buildPdfPhotoGallerySlots(pageWidth, imageChunk.length),
-              totalHeight: imageChunk.length * 200
-            };
         
 
         const preparedAssets = await Promise.all(
