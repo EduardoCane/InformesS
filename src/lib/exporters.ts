@@ -3569,6 +3569,7 @@ const exportGenericToDOCX = async (
 
 export const exportToPDF = async (inspection: Inspection, evidences: Evidence[]) => {
   const context = getExportContext(inspection);
+  }
 
   if (shouldUseNormalLayout(context)) {
     await exportNormalToPDF(inspection, context);
