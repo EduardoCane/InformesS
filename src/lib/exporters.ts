@@ -3581,7 +3581,7 @@ export const exportToPDF = async (inspection: Inspection, evidences: Evidence[])
   }
   if (hasTableLayoutSections(context)) {
     await exportTableLayoutToPDF(inspection, context);
-
+  }
   if (hasTableLayoutSections(context) || context.formatSections.length > 0) {
     await exportCustomMemoToPDF(inspection, evidences, context);
     return;
